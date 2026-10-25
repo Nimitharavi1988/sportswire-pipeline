@@ -13,7 +13,7 @@ import { medalTableProblem, parseMedalTable, reviewRejectedTable, type MedalCand
 import { syncAthletes } from "./athleteSync";
 
 // Wikimedia asks API clients to identify themselves.
-const USER_AGENT = "SportsWireLive/1.0 (https://sportswirelive.com; hyperianaillc@gmail.com)";
+const USER_AGENT = "SportsWireLive/1.0 (https://sportswirelive.com; contact@hyperianai.com)";
 
 export async function syncEventData(): Promise<void> {
   for (const hub of Object.values(EVENT_HUBS)) {

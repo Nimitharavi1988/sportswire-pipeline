@@ -19,7 +19,7 @@ import { athleteSlug, medalistsProblem, parseMedalists, plainName } from "./athl
 import { medalistsKey, profileKey, type AthleteProfile, type MedalistsSnapshot } from "./athleteStore";
 
 // Wikimedia asks API clients to identify themselves.
-const USER_AGENT = "SportsWireLive/1.0 (https://sportswirelive.com; hyperianaillc@gmail.com)";
+const USER_AGENT = "SportsWireLive/1.0 (https://sportswirelive.com; contact@hyperianai.com)";
 const HEADERS = { "User-Agent": USER_AGENT };
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const PROFILES_PER_RUN = 40;
