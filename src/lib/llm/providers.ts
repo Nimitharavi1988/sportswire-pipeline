@@ -109,6 +109,17 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
     slots.push(lite("gemini-free lite31", "gemini-3.1-flash-lite"));
   }
 
+  // A second free key from a SECOND Google project (free quota is per project, not per key). Its own budgetKey keeps its
+  // daily counters apart from the first key's. Optional: unset = nothing changes.
+  const freeKey2 = env.GEMINI_FREE_API_KEY_2;
+  if (freeKey2) {
+    const lite2 = (id: string, model: string): Slot => gemini(freeKey2, id, model, ["lite", "standard"],
+      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 500), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false,
+      { budgetKey: `gemini-free2/${model}` });
+    slots.push(lite2("gemini-free2 lite", GEMINI_LITE));
+    slots.push(lite2("gemini-free2 lite31", "gemini-3.1-flash-lite"));
+  }
+
   const groqKey = env.GROQ_API_KEY;
   if (groqKey) {
     const groq = (model: string, tiers: Tier[]): Slot => ({
