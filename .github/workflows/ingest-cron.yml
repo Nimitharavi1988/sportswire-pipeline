@@ -135,3 +135,5 @@ jobs:
           TRANSLATION_LOCALES: ${{ vars.TRANSLATION_LOCALES }}
           LIVE_LOCALES: ${{ vars.LIVE_LOCALES }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+
+# Started by an external scheduler through the dispatch API; see README.md.

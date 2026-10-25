@@ -25,3 +25,5 @@ jobs:
       - run: npx tsx scripts/deliveryWatch.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+# Started by an external scheduler through the dispatch API; see README.md.
