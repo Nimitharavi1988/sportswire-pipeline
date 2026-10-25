@@ -1,0 +1,41 @@
+name: Ingestion test (no posting)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingestion-test
+  cancel-in-progress: false
+
+jobs:
+  ingest-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsx src/lib/ingestion/runIngest.ts
+        timeout-minutes: 25
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          CRICKETDATA_API_KEY: ${{ secrets.CRICKETDATA_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_ROUTER: ${{ vars.LLM_ROUTER }}
+          LLM_DISABLE: ${{ vars.LLM_DISABLE }}
+          LLM_PAID_DAILY_CALLS: ${{ vars.LLM_PAID_DAILY_CALLS }}
+          DAILY_NEWS_COMMENTARY_CAP: ${{ vars.DAILY_NEWS_COMMENTARY_CAP }}
+          INGEST_CONCURRENCY: ${{ vars.INGEST_CONCURRENCY }}
+          MIN_GROUNDING_CHARS: ${{ vars.MIN_GROUNDING_CHARS }}
+          GEMINI_FREE_API_KEY: ${{ secrets.GEMINI_FREE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
