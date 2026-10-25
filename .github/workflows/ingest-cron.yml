@@ -1,0 +1,137 @@
+name: Ingestion cron
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ingestion
+  cancel-in-progress: false
+
+jobs:
+  run-ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npx tsx src/lib/ingestion/runIngest.ts
+        timeout-minutes: 20
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          CRICKETDATA_API_KEY: ${{ secrets.CRICKETDATA_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_ROUTER: ${{ vars.LLM_ROUTER }}
+          LLM_DISABLE: ${{ vars.LLM_DISABLE }}
+          LLM_PAID_DAILY_CALLS: ${{ vars.LLM_PAID_DAILY_CALLS }}
+          DAILY_NEWS_COMMENTARY_CAP: ${{ vars.DAILY_NEWS_COMMENTARY_CAP }}
+          INGEST_CONCURRENCY: ${{ vars.INGEST_CONCURRENCY }}
+          MIN_GROUNDING_CHARS: ${{ vars.MIN_GROUNDING_CHARS }}
+          GEMINI_FREE_API_KEY: ${{ secrets.GEMINI_FREE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/videos/youtubeSync.ts
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/snapshots/sync.ts
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FOOTBALL_DATA_API_KEY: ${{ secrets.FOOTBALL_DATA_API_KEY }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/events/syncEventData.ts
+        timeout-minutes: 10
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/ingestion/autoApprove.ts
+        timeout-minutes: 30
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          NEXT_PUBLIC_VAPID_PUBLIC_KEY: ${{ secrets.NEXT_PUBLIC_VAPID_PUBLIC_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_ROUTER: ${{ vars.LLM_ROUTER }}
+          LLM_DISABLE: ${{ vars.LLM_DISABLE }}
+          LLM_PAID_DAILY_CALLS: ${{ vars.LLM_PAID_DAILY_CALLS }}
+          GEMINI_FREE_API_KEY: ${{ secrets.GEMINI_FREE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN }}
+          YOUTUBE_CLIENT_ID: ${{ secrets.YOUTUBE_CLIENT_ID }}
+          YOUTUBE_CLIENT_SECRET: ${{ secrets.YOUTUBE_CLIENT_SECRET }}
+          YOUTUBE_REFRESH_TOKEN: ${{ secrets.YOUTUBE_REFRESH_TOKEN }}
+          YOUTUBE_REFRESH_TOKEN_ES: ${{ secrets.YOUTUBE_REFRESH_TOKEN_ES }}
+          YOUTUBE_SHORTS_ENABLED: ${{ vars.YOUTUBE_SHORTS_ENABLED }}
+          YOUTUBE_MAX_PER_DAY: ${{ vars.YOUTUBE_MAX_PER_DAY }}
+          YOUTUBE_MIN_GAP_MINUTES: ${{ vars.YOUTUBE_MIN_GAP_MINUTES }}
+          FACEBOOK_PAGE_2_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_2_ACCESS_TOKEN }}
+          FACEBOOK_ES_ENABLED: ${{ vars.FACEBOOK_ES_ENABLED }}
+          FACEBOOK_PAGE_ES_ID: ${{ vars.FACEBOOK_PAGE_ES_ID }}
+          FACEBOOK_PAGE_ES_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ES_ACCESS_TOKEN }}
+          INSTAGRAM_BUSINESS_ACCOUNT_ID: ${{ secrets.INSTAGRAM_BUSINESS_ACCOUNT_ID }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/stories/autoDraft.ts
+        timeout-minutes: 25
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_ROUTER: ${{ vars.LLM_ROUTER }}
+          LLM_DISABLE: ${{ vars.LLM_DISABLE }}
+          LLM_PAID_DAILY_CALLS: ${{ vars.LLM_PAID_DAILY_CALLS }}
+          GEMINI_FREE_API_KEY: ${{ secrets.GEMINI_FREE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/stories/enrich.ts
+        timeout-minutes: 15
+        env:
+          ENRICH_MAX_PER_DAY: ${{ vars.ENRICH_MAX_PER_DAY }}
+          ENRICH_MAX_PER_RUN: ${{ vars.ENRICH_MAX_PER_RUN }}
+          ENRICH_MAX_RESEARCH_PER_RUN: ${{ vars.ENRICH_MAX_RESEARCH_PER_RUN }}
+          ENRICH_SHORT_MAX_PER_DAY: ${{ vars.ENRICH_SHORT_MAX_PER_DAY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_ROUTER: ${{ vars.LLM_ROUTER }}
+          LLM_DISABLE: ${{ vars.LLM_DISABLE }}
+          LLM_PAID_DAILY_CALLS: ${{ vars.LLM_PAID_DAILY_CALLS }}
+          GEMINI_FREE_API_KEY: ${{ secrets.GEMINI_FREE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
+      - if: ${{ !cancelled() }}
+        run: npx tsx src/lib/translation/translateArticles.ts
+        timeout-minutes: 20
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_ROUTER: ${{ vars.LLM_ROUTER }}
+          LLM_DISABLE: ${{ vars.LLM_DISABLE }}
+          LLM_PAID_DAILY_CALLS: ${{ vars.LLM_PAID_DAILY_CALLS }}
+          GEMINI_FREE_API_KEY: ${{ secrets.GEMINI_FREE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          TRANSLATION_LOCALES: ${{ vars.TRANSLATION_LOCALES }}
+          LIVE_LOCALES: ${{ vars.LIVE_LOCALES }}
+          INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}

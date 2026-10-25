@@ -1,0 +1,278 @@
+// YouTube Shorts upload (YouTube Data API v3, resumable upload). A Short is just
+// a vertical video of 3 minutes or less, so it's the same MP4 the Instagram and
+// Facebook reels use. Off unless YOUTUBE_SHORTS_ENABLED=1 and the OAuth
+// credentials are set (scripts/youtubeAuth.ts gets the refresh token once).
+// Note: until the Google project passes YouTube's API audit, uploads made
+// through the API are locked to private.
+
+// Pacing, not a YouTube limit (uploads cost ~100 units and have their own quota bucket since 2026-06):
+// spread the day's Shorts out so each gets its own test audience instead of five landing in one hour.
+// Tunable with YOUTUBE_MAX_PER_DAY / YOUTUBE_MIN_GAP_MINUTES (GitHub repository variables).
+const envNum = (name: string, fallback: number) => { const n = Number(process.env[name]); return Number.isFinite(n) && n > 0 ? n : fallback; };
+export const maxShortsPerDay = () => envNum("YOUTUBE_MAX_PER_DAY", 8);
+export const minGapMinutes = () => envNum("YOUTUBE_MIN_GAP_MINUTES", 120);
+
+// YouTube caps how many videos a channel may upload per day (a new channel's cap is low and not published:
+// the English channel hit it after about 20 uploads in 24 hours, the Spanish one after about 10). Past it every
+// upload fails with this message, so after one such failure that channel pauses YouTube attempts for a few hours
+// (rather than rendering and failing every run), then one attempt probes.
+export const UPLOAD_LIMIT_MESSAGE = "exceeded the number of videos they may upload";
+export const UPLOAD_LIMIT_PAUSE_HOURS = 3;
+export function uploadLimitPauseActive(lastLimitFailure: Date | null, now: Date, hours = UPLOAD_LIMIT_PAUSE_HOURS): boolean {
+  return lastLimitFailure !== null && now.getTime() - lastLimitFailure.getTime() < hours * 3_600_000;
+}
+
+// Whether another Short may go out: under the rolling-24h cap and past the minimum gap since the last one.
+export function youtubeSlotOpen(postedLast24h: number, lastPostedAt: Date | null, now: Date, maxPerDay: number, minGapMin: number): boolean {
+  if (postedLast24h >= maxPerDay) return false;
+  if (lastPostedAt && now.getTime() - lastPostedAt.getTime() < minGapMin * 60_000) return false;
+  return true;
+}
+const TITLE_MAX = 100;
+
+// Two channels share one Google Cloud project (and client ID/secret); each has its own refresh token,
+// because the token decides which channel a video goes to.
+export type YoutubeChannel = "en" | "es";
+
+// Which sports get a Short once the day is nearly full (measured 2026-10-15 over a week of Shorts, median views
+// per Short: English WNBA ~1000, college football ~470, baseball ~460, cricket ~310, NFL ~95; Spanish WNBA ~780,
+// baseball ~430, tennis ~350, soccer ~320, NFL ~250). The channel's daily slots are limited (YouTube's own cap,
+// about 10 a day), so the last YOUTUBE_PRIORITY_RESERVE slots of a rolling 24h go only to these sports and the
+// rest wait for a free earlier slot. Samples are small (5-15 Shorts a sport): revisit with scripts/youtubeReport.ts.
+const PRIORITY_SPORTS: Record<YoutubeChannel, string[]> = {
+  en: ["wnba", "college-football", "baseball", "cricket"],
+  es: ["wnba", "baseball", "tennis", "football", "american-football"],
+};
+// Off by default since 2026-10-15 (every Short the channel allows is sent, none held back for a better sport): 0.
+// Set YOUTUBE_PRIORITY_RESERVE to a positive number to hold that many of the day's last slots for the priority sports.
+// (envNum treats 0 as unset, so this reads its own variable.)
+export const priorityReserve = () => {
+  const n = Number(process.env.YOUTUBE_PRIORITY_RESERVE);
+  return process.env.YOUTUBE_PRIORITY_RESERVE?.trim() && Number.isFinite(n) && n >= 0 ? Math.floor(n) : 0;
+};
+// category is the article's category ("cricket", "american-football/nfl"...). Pure, unit-tested.
+export function youtubeSportAllowed(channel: YoutubeChannel, category: string, postedLast24h: number, maxPerDay: number, reserve: number): boolean {
+  if (PRIORITY_SPORTS[channel].includes(category.split("/")[0].toLowerCase())) return true;
+  return postedLast24h < maxPerDay - reserve;
+}
+
+const refreshTokenFor = (channel: YoutubeChannel) => (channel === "es" ? process.env.YOUTUBE_REFRESH_TOKEN_ES : process.env.YOUTUBE_REFRESH_TOKEN);
+
+export function youtubeConfigured(channel: YoutubeChannel = "en"): boolean {
+  return process.env.YOUTUBE_SHORTS_ENABLED === "1"
+    && Boolean(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET && refreshTokenFor(channel));
+}
+
+// Title <= 100 chars, trimmed on a word boundary with an ellipsis. No "#Shorts" in it: a hashtag in the
+// title replaces the description's hashtags above the video, and #Shorts goes in the description.
+export function shortsTitle(headline: string): string {
+  const clean = headline.replace(/\s+/g, " ").trim();
+  if (clean.length <= TITLE_MAX) return clean;
+  const cut = clean.slice(0, TITLE_MAX - 1);
+  const atWord = cut.slice(0, cut.lastIndexOf(" ") > TITLE_MAX / 2 ? cut.lastIndexOf(" ") : cut.length);
+  return atWord.replace(/[\s,.:;–—-]+$/, "") + "…";
+}
+
+// A hook the model wrote in capitals ("ARMY QB RALLIES 38-RUSHES, 223 YARDS...") reads as shouting in a
+// title. Put it in sentence case, keeping names and abbreviations: a word keeps the capitals it has in
+// the article's headline, a known abbreviation stays upper-case, anything else goes lower-case.
+const ACRONYMS = new Set(["NFL", "NBA", "WNBA", "MLB", "NHL", "UFC", "MMA", "QB", "WR", "RB", "TE", "IPL", "ODI", "T20", "T20I", "USA", "US", "UK", "UEFA", "FIFA", "AFC", "NFC", "ESPN", "NCAA", "CFB", "PSG", "FC", "LA", "NY", "DC", "AI", "F1", "MVP", "GOAT", "TV", "UAE", "RCB", "CSK", "MI", "KKR", "BCCI", "ICC", "VAR", "PGA", "LIV", "ACC", "SEC"]);
+
+// Unicode-aware: Spanish letters (Ñ, Ó, É...) count as letters and keep their words whole.
+function isShouting(s: string): boolean {
+  const letters = s.replace(/[^\p{L}]/gu, "");
+  if (letters.length < 8) return false;
+  return letters.replace(/[^\p{Lu}]/gu, "").length / letters.length > 0.6;
+}
+
+const WORD = /[\p{L}\p{N}][\p{L}\p{N}\u2019']*/gu;
+
+// In Spanish these abbreviations are ordinary words (la, mi, te), so they are not kept upper-case there.
+const SPANISH_WORDS = new Set(["LA", "MI", "TE"]);
+
+export function fixShoutedTitle(hook: string, headline: string, language: "en" | "es" = "en"): string {
+  if (!isShouting(hook)) return hook;
+  const known = new Map<string, string>();
+  if (!isShouting(headline)) {
+    for (const w of headline.match(WORD) ?? []) if (/\p{Lu}/u.test(w)) known.set(w.toLowerCase(), w);
+  }
+  const fixed = hook.replace(WORD, (w) => known.get(w.toLowerCase()) ?? (ACRONYMS.has(w.toUpperCase()) && !(language === "es" && SPANISH_WORDS.has(w.toUpperCase())) ? w.toUpperCase() : w.toLowerCase()));
+  return fixed.replace(/^([^\p{L}]*)(\p{Ll})/u, (_m, pre: string, c: string) => pre + c.toUpperCase());
+}
+
+// Sport phrases people search for, by category (the first part of the article's category).
+const SPORT_TAGS: Record<"en" | "es", [string, string[]][]> = {
+  en: [
+    ["american-football", ["NFL", "NFL news", "NFL highlights", "American football"]],
+    ["college-football", ["college football", "college football news", "college football highlights", "CFB", "NCAA football"]],
+    ["cricket", ["cricket", "cricket news", "cricket highlights", "T20 cricket"]],
+    ["football", ["soccer", "football news", "football highlights", "soccer news"]],
+    ["wnba", ["WNBA", "WNBA news", "women's basketball"]],
+    ["basketball", ["basketball", "NBA", "NBA news", "basketball highlights"]],
+    ["baseball", ["MLB", "baseball", "MLB news", "baseball highlights"]],
+    ["hockey", ["NHL", "hockey", "hockey highlights"]],
+    ["mma", ["UFC", "MMA", "UFC news", "MMA highlights"]],
+    ["boxing", ["boxing", "boxing news", "boxing highlights"]],
+    ["formula-1", ["Formula 1", "F1", "F1 news"]],
+    ["tennis", ["tennis", "tennis news", "tennis highlights"]],
+    ["golf", ["golf", "golf news", "PGA Tour"]],
+    ["volleyball", ["volleyball", "volleyball highlights"]],
+    ["rugby", ["rugby", "rugby news", "rugby highlights"]],
+  ],
+  es: [
+    ["american-football", ["NFL", "fútbol americano", "resumen NFL"]],
+    ["college-football", ["fútbol americano universitario", "NCAA", "college football"]],
+    ["cricket", ["críquet", "cricket"]],
+    ["football", ["fútbol", "noticias de fútbol", "resumen de fútbol"]],
+    ["wnba", ["WNBA", "baloncesto femenino"]],
+    ["basketball", ["baloncesto", "NBA", "resumen NBA"]],
+    ["baseball", ["béisbol", "MLB", "resumen MLB"]],
+    ["hockey", ["NHL", "hockey"]],
+    ["mma", ["UFC", "MMA", "resumen UFC"]],
+    ["boxing", ["boxeo", "noticias de boxeo"]],
+    ["formula-1", ["Fórmula 1", "F1"]],
+  ],
+};
+
+const BRAND_TAGS = new Set(["sportswirelive", "sportsnews", "noticiasdeportivas", "shorts"]);
+
+// Tags for a Short: the story's own names first (people and teams from the hashtags, the teams and series
+// the article carries), then the sport phrases people search, then general ones. At most 15 and about
+// 400 characters (YouTube's limit is 500 in all), no duplicates.
+export function shortsTags(input: { category?: string | null; names?: (string | null | undefined)[]; hashtags?: string[]; language?: "en" | "es" }): string[] {
+  const lang = input.language ?? "en";
+  const out: string[] = [];
+  const add = (t: string | null | undefined) => {
+    const v = (t ?? "").replace(/\s+/g, " ").trim();
+    if (v.length >= 2 && v.length <= 40 && !out.some((o) => o.toLowerCase() === v.toLowerCase())) out.push(v);
+  };
+  for (const h of input.hashtags ?? []) {
+    const bare = h.replace(/^#/, "");
+    if (BRAND_TAGS.has(bare.toLowerCase())) continue;
+    add(bare.replace(/([a-z\u00e0-\u00ff])([A-Z])/g, "$1 $2"));
+  }
+  for (const n of input.names ?? []) add(n);
+  const cat = input.category ?? "";
+  for (const t of SPORT_TAGS[lang].find(([c]) => cat === c || cat.startsWith(c + "/"))?.[1] ?? []) add(t);
+  if (lang === "es") { add("noticias deportivas"); add("deportes"); add("Shorts"); }
+  else { add("sports news"); add("sports shorts"); add("Shorts"); }
+  const kept: string[] = [];
+  let chars = 0;
+  for (const t of out) {
+    if (kept.length >= 15 || chars + t.length + 2 > 400) break;
+    kept.push(t);
+    chars += t.length + 2;
+  }
+  return kept;
+}
+
+
+// The reel's hook (written from the article under strict no-invented-facts rules) makes a better
+// Shorts title than the news headline; the headline is the fallback.
+// A hook is only a good title when it says who or what: "18-Year-old signed through 2030" says neither.
+// It needs at least one capitalised word that is not an ordinary sentence starter (a person, team, place or
+// abbreviation: "Bills edge Rams", "Caitlin Clark's 1s hit the NBA floor", "Georgia takes number one").
+const STARTERS = new Set([
+  "the", "a", "an", "in", "on", "at", "after", "before", "why", "how", "what", "when", "where", "who", "can", "will", "is", "are", "did", "do", "does",
+  "this", "that", "these", "those", "it", "he", "she", "they", "we", "you", "our", "his", "her", "their", "all", "one", "two", "three", "first", "new", "no", "not",
+  "el", "la", "los", "las", "un", "una", "por", "para", "en", "con", "sin", "qué", "cómo", "cuándo", "quién", "es", "son", "este", "esta", "ya", "su", "sus", "al", "del", "de", "y", "se",
+]);
+export function hookNamesSomeone(hook: string): boolean {
+  // Whole space-separated words, so "18-Year-old" (a number first) is not mistaken for a name.
+  return hook.split(/\s+/).some((token) => {
+    const first = token.match(/^[^\p{L}\p{N}]*([\p{L}\p{N}][\p{L}\p{N}’']*)/u)?.[1];
+    return Boolean(first) && /^\p{Lu}/u.test(first!) && !STARTERS.has(first!.toLowerCase());
+  });
+}
+
+
+// Title test (2026-10-15): of the 50 most-viewed sports Shorts of the week, 54% carried hashtags in the title and 36%
+// an emoji. Half of our Shorts (by story id, so it can be recomputed later and is independent of the caption test)
+// get the sport emoji and up to two of the story's own hashtags after the title; the rest keep the plain title.
+export type TitleVariant = "decorated" | "plain";
+export function titleVariantFor(articleId: string): TitleVariant {
+  let h = 7;
+  for (const c of articleId) h = (h * 33 + c.charCodeAt(0)) >>> 0;
+  return h % 2 === 0 ? "decorated" : "plain";
+}
+// Sport emoji first, then the title, then up to two hashtags, all within the 100-character limit. The story's own
+// hashtags come before the generic ones (#Deportes, #SportsWireLive...). If the whole title does not fit with the extras
+// it takes fewer hashtags, then none (emoji only), and a title too long even for the emoji stays plain: an ellipsis in the middle of a
+// word before the hashtags looked worse than no extras. A title that already has an emoji, or a #tag, gets no second one.
+const GENERIC_TAG = /^#(sportswirelive|deportes|deporte|sports|sportsnews|noticias|news|viral|trending)$/i;
+export function decorateShortsTitle(title: string, emoji: string | null | undefined, hashtags: string[], max = TITLE_MAX): string {
+  const all = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.length > 2 && h.toLowerCase() !== "#shorts")));
+  const tags = [...all.filter((h) => !GENERIC_TAG.test(h)), ...all.filter((h) => GENERIC_TAG.test(h))].slice(0, 2);
+  const lead = emoji && !/\p{Extended_Pictographic}/u.test(title) ? `${emoji} ` : "";
+  const canTag = !title.includes("#");
+  for (let n = canTag ? tags.length : 0; n >= 0; n--) {
+    const tail = n ? " " + tags.slice(0, n).join(" ") : "";
+    const out = lead + title + tail;
+    if (out.length <= max) return out;
+  }
+  return title;
+}
+
+export function shortsTitleFor(hook: string | null | undefined, headline: string, language: "en" | "es" = "en"): string {
+  const h = fixShoutedTitle((hook ?? "").replace(/\s+/g, " ").trim(), headline, language);
+  // A hook that names nobody (or is tiny) is replaced by the headline, which always does.
+  return shortsTitle(h.length >= 12 && hookNamesSomeone(h) ? h : headline);
+}
+
+export function shortsDescription(summary: string, articleUrl: string, hashtags: string[], language: "en" | "es" = "en"): string {
+  // The first three hashtags show above the video, so the story's own come first and #Shorts goes last.
+  const own = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.toLowerCase() !== "#shorts"))).slice(0, 7);
+  const tags = [...own, "#Shorts"];
+  const ask = language === "es" ? "¿Qué opinas? Cuéntanos en los comentarios." : "What's your take? Tell us in the comments.";
+  const read = language === "es" ? "Nota completa" : "Read the full story";
+  const follow = language === "es" ? "Suscríbete a Sports Wire Live en Español para noticias deportivas diarias." : "Follow The Sports Live Wire for daily sports news.";
+  return `${summary.trim()}\n\n${ask}\n\n${read}: ${articleUrl}\n\n${follow}\n\n${tags.join(" ")}`;
+}
+
+async function accessToken(refreshToken: string): Promise<string> {
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: process.env.YOUTUBE_CLIENT_ID!,
+      client_secret: process.env.YOUTUBE_CLIENT_SECRET!,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.access_token) throw new Error(`YouTube token refresh failed: ${data.error_description ?? data.error ?? res.status}`);
+  return data.access_token as string;
+}
+
+// Uploads the MP4 as a public Short. Returns the YouTube video id.
+export async function uploadShort(mp4: Buffer, title: string, description: string, tags: string[], privacy: "public" | "unlisted" | "private" = "public", language = "en", channel: YoutubeChannel = "en"): Promise<string> {
+  const refresh = refreshTokenFor(channel);
+  if (!refresh) throw new Error(`No YouTube refresh token for the ${channel} channel`);
+  const token = await accessToken(refresh);
+  const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json; charset=UTF-8",
+      "X-Upload-Content-Type": "video/mp4",
+      "X-Upload-Content-Length": String(mp4.length),
+    },
+    body: JSON.stringify({
+      snippet: { title, description, tags: tags.slice(0, 15), categoryId: "17", defaultLanguage: language }, // 17 = Sports
+      status: { privacyStatus: privacy, selfDeclaredMadeForKids: false, embeddable: true },
+    }),
+  });
+  if (!init.ok) throw new Error(`YouTube upload start failed (${init.status}): ${(await init.text()).slice(0, 300)}`);
+  const uploadUrl = init.headers.get("location");
+  if (!uploadUrl) throw new Error("YouTube returned no upload URL");
+
+  const res = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": "video/mp4", "Content-Length": String(mp4.length) },
+    body: new Uint8Array(mp4),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.id) throw new Error(`YouTube upload failed (${res.status}): ${data?.error?.message ?? ""}`);
+  return data.id as string;
+}

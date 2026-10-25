@@ -1,0 +1,27 @@
+name: Delivery watch
+
+on:
+  schedule: [{ cron: "40 * * * *" }]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delivery-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx scripts/deliveryWatch.ts
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

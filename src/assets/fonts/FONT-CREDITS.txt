@@ -1,0 +1,10 @@
+All fonts in this folder are licensed under the SIL Open Font License,
+Version 1.1 (full text in OFL.txt).
+
+Poppins: see OFL.txt.
+Oswald-Bold.woff: Copyright 2016 The Oswald Project Authors (https://github.com/googlefonts/OswaldFont)
+BebasNeue-Regular.woff: Copyright 2019 The Bebas Neue Project Authors (https://github.com/dharmatype/Bebas-Neue)
+Montserrat-ExtraBold.woff: Copyright 2011 The Montserrat Project Authors (https://github.com/JulietaUla/Montserrat)
+
+The .woff files are the Latin subsets built by Fontsource (@fontsource/*),
+used for reel headlines (src/lib/social/reel.tsx).
