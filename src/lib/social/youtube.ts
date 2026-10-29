@@ -176,6 +176,17 @@ const ALIASES: Record<string, string> = {
   "real madrid": "Madrid", "barcelona": "Barça", "atlético de madrid": "Atletico Madrid", "bayern munich": "Bayern", "tottenham hotspur": "Spurs", "spurs": "Tottenham",
 };
 
+// Hashtag forms of the other spelling of a name in the title (#StephCurry for Stephen Curry), for Instagram.
+export function aliasHashtags(title: string | null | undefined): string[] {
+  const out: string[] = [];
+  for (const n of namesInTitle(title ?? "")) {
+    const alias = ALIASES[n.toLowerCase()];
+    const tag = alias ? "#" + alias.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^A-Za-z0-9]/g, "") : "";
+    if (tag.length > 3 && !out.includes(tag)) out.push(tag);
+  }
+  return out.slice(0, 1);
+}
+
 // The two hashtags shown above the video (the third is #Shorts): the event or the story's own specific one first, then the broad sport
 // tag, never the brand tags (#SportsWireLive, #SportsNews) unless nothing else exists. Trending Shorts carry #nfl, #cricket, #futbol.
 const GENERIC_HASHTAG = /^#(sportswirelive|sportsnews|noticiasdeportivas|deportes|shorts|sports|news|noticias)$/i;

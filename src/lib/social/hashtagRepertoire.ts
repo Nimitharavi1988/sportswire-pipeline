@@ -1,6 +1,7 @@
 import { TRACKED_PLAYERS } from "../players";
 import { topicTags } from "./topicHashtags";
 import { entitiesInTitle } from "./entityHandles";
+import { eventFor, aliasHashtags } from "./youtube";
 // Explicit-request tag repertoire (2026-09-22) — deterministic, code-side
 // selection rather than letting Gemini invent hashtags. Same reasoning as
 // generateSocialCaptions itself: separating "does this tag genuinely apply"
@@ -199,17 +200,20 @@ export function selectSpanishHashtags(title: string, category: string): string[]
 // Topic Pages and accounts without their own tag rules (US sports, Football, and the Instagram posts of every topic account):
 // one star/team/event tag and the sport's own tag, then the usual tags, then the brand tag (3 on Facebook, 4 + brand on Instagram).
 // The main Page and main Instagram keep selectFacebookHashtags / selectInstagramHashtags.
-function topicMerge(title: string, category: string, usual: string[], slots: number): string[] {
+// The live event the story belongs to (#INDvNZ, #BallonDor, #WorldSeries) goes first: it is what fans are searching and following this week.
+// Instagram also gets the other spelling of a name (#StephCurry for Stephen Curry).
+function topicMerge(title: string, category: string, usual: string[], slots: number, alias = false): string[] {
   const brand = usual[usual.length - 1];
   const { specifics, sport } = topicTags(title, category);
-  const body = [...specifics.slice(0, slots > 2 ? 2 : 1), ...(sport ? [sport] : []), ...usual.slice(0, -1), ...specifics.slice(slots > 2 ? 2 : 1)];
+  const event = eventFor(title)?.tag;
+  const body = [...(event ? [event] : []), ...specifics.slice(0, slots > 2 ? 2 : 1), ...(alias ? aliasHashtags(title) : []), ...(sport ? [sport] : []), ...usual.slice(0, -1), ...specifics.slice(slots > 2 ? 2 : 1)];
   return [...new Set(body)].filter((t) => t !== brand).slice(0, slots).concat(brand);
 }
 export function selectTopicFacebookHashtags(title: string, category: string): string[] {
   return topicMerge(title, category, selectFacebookHashtags(title, category), 2);
 }
 export function selectTopicInstagramHashtags(title: string, category: string, limit = 4): string[] {
-  return topicMerge(title, category, selectInstagramHashtags(title, category, limit), limit);
+  return topicMerge(title, category, selectInstagramHashtags(title, category, limit), limit, true);
 }
 
 // No artificial minimum/maximum beyond a sane upper bound — see module
