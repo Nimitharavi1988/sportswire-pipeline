@@ -142,7 +142,20 @@ const BRAND_TAGS = new Set(["sportswirelive", "sportsnews", "noticiasdeportivas"
 // Tags for a Short: the story's own names first (people and teams from the hashtags, the teams and series
 // the article carries), then the sport phrases people search, then general ones. At most 15 and about
 // 400 characters (YouTube's limit is 500 in all), no duplicates.
-export function shortsTags(input: { category?: string | null; names?: (string | null | undefined)[]; hashtags?: string[]; language?: "en" | "es" }): string[] {
+// Full names in a headline ("Vincent Kompany", "Caitlin Clark"): two or three capitalised words in a row, the first not an
+// ordinary sentence starter. People are what viewers search for, and the top Shorts carried the person as a tag.
+export function namesInTitle(title: string): string[] {
+  const out: string[] = [];
+  for (const m of title.matchAll(/(?:^|[\s(])(\p{Lu}[\p{L}’'.-]+(?: \p{Lu}[\p{L}’'.-]+){1,2})/gu)) {
+    const name = m[1].replace(/['’]s$/, "").replace(/[.,]$/, "");
+    const words = name.split(" ");
+    if (STARTERS.has(words[0].toLowerCase()) || words.some((w) => w === w.toUpperCase() && w.length > 1)) continue;
+    if (!out.some((o) => o.toLowerCase() === name.toLowerCase())) out.push(name);
+  }
+  return out.slice(0, 2);
+}
+
+export function shortsTags(input: { category?: string | null; names?: (string | null | undefined)[]; hashtags?: string[]; language?: "en" | "es"; title?: string | null }): string[] {
   const lang = input.language ?? "en";
   const out: string[] = [];
   const add = (t: string | null | undefined) => {
@@ -154,9 +167,13 @@ export function shortsTags(input: { category?: string | null; names?: (string | 
     if (BRAND_TAGS.has(bare.toLowerCase())) continue;
     add(bare.replace(/([a-z\u00e0-\u00ff])([A-Z])/g, "$1 $2"));
   }
+  for (const n of namesInTitle(input.title ?? "")) add(n);
   for (const n of input.names ?? []) add(n);
   const cat = input.category ?? "";
-  for (const t of SPORT_TAGS[lang].find(([c]) => cat === c || cat.startsWith(c + "/"))?.[1] ?? []) add(t);
+  const sportTags = SPORT_TAGS[lang].find(([c]) => cat === c || cat.startsWith(c + "/"))?.[1] ?? [];
+  for (const t of sportTags) add(t);
+  // Shorts with fewer than 7 tags got about half the views of those with 7 to 9 (2026-10-29): top up from the sport's main phrase.
+  if (sportTags[0] && out.length < 6) { add(lang === "es" ? sportTags[0] + " hoy" : sportTags[0] + " today"); add(lang === "es" ? sportTags[0] + " última hora" : sportTags[0] + " latest"); }
   if (lang === "es") { add("noticias deportivas"); add("deportes"); add("Shorts"); }
   else { add("sports news"); add("sports shorts"); add("Shorts"); }
   const kept: string[] = [];
@@ -180,11 +197,19 @@ const STARTERS = new Set([
   "this", "that", "these", "those", "it", "he", "she", "they", "we", "you", "our", "his", "her", "their", "all", "one", "two", "three", "first", "new", "no", "not",
   "el", "la", "los", "las", "un", "una", "por", "para", "en", "con", "sin", "qué", "cómo", "cuándo", "quién", "es", "son", "este", "esta", "ya", "su", "sus", "al", "del", "de", "y", "se",
 ]);
-export function hookNamesSomeone(hook: string): boolean {
+// A capitalised word at the start of a later sentence ("80-69. Séptimo juego confirmado.") is only a name when the next word is
+// capitalised too ("Caleb Williams") or the story headline names it: otherwise it is just the first word of a sentence.
+export function hookNamesSomeone(hook: string, headline = ""): boolean {
+  const word = (token: string) => token.match(/^[^\p{L}\p{N}]*([\p{L}\p{N}][\p{L}\p{N}’'-]*)/u)?.[1];
+  const isName = (w: string | undefined) => Boolean(w) && /^\p{Lu}/u.test(w!) && !STARTERS.has(w!.toLowerCase());
+  const inHeadline = new Set(headline.split(/\s+/).map(word).filter((w) => isName(w)).map((w) => w!.toLowerCase()));
+  const tokens = hook.split(/\s+/);
   // Whole space-separated words, so "18-Year-old" (a number first) is not mistaken for a name.
-  return hook.split(/\s+/).some((token) => {
-    const first = token.match(/^[^\p{L}\p{N}]*([\p{L}\p{N}][\p{L}\p{N}’']*)/u)?.[1];
-    return Boolean(first) && /^\p{Lu}/u.test(first!) && !STARTERS.has(first!.toLowerCase());
+  return tokens.some((token, i) => {
+    const w = word(token);
+    if (!isName(w)) return false;
+    const firstSentence = !tokens.slice(0, i).some((t) => /[.!?]["”)]*$/.test(t));
+    return firstSentence || isName(word(tokens[i + 1] ?? "")) || inHeadline.has(w!.toLowerCase());
   });
 }
 
@@ -219,7 +244,7 @@ export function decorateShortsTitle(title: string, emoji: string | null | undefi
 export function shortsTitleFor(hook: string | null | undefined, headline: string, language: "en" | "es" = "en"): string {
   const h = fixShoutedTitle((hook ?? "").replace(/\s+/g, " ").trim(), headline, language);
   // A hook that names nobody (or is tiny) is replaced by the headline, which always does.
-  return shortsTitle(h.length >= 12 && hookNamesSomeone(h) ? h : headline);
+  return shortsTitle(h.length >= 12 && hookNamesSomeone(h, headline) ? h : headline);
 }
 
 // YouTube rules (2026-10-29): no link in the description (YouTube holds back Shorts that link off the platform), and at most

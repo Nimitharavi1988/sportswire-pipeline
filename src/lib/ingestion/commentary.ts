@@ -421,7 +421,7 @@ If the article doesn't contain enough concrete facts for at least 3 real rows, r
 function hookCandidatesBlock(styles: HookStyle[]): string {
   return `
 
-HOOK CANDIDATES: also return hookCandidates, one {style, hook} object for each style below. Each hook is under 10 words, strictly true to the article, and uses only numbers, names and words the article contains. If the article cannot honestly support a style, leave that style out instead of stretching it. The styles:
+HOOK CANDIDATES: also return hookCandidates, one {style, hook} object for each style below. Each hook is under 10 words, strictly true to the article, and uses only numbers, names and words the article contains. If the article cannot honestly support a style, leave that style out instead of stretching it. NAME RULE: every hook, in every style, must name the person or team the story is about (Shorts whose titles named nobody, such as two bare number fragments, got a fraction of the views of those that did), so put the name inside the hook: \"Hurts: 168 yards. One win.\" not \"168 yards. One win.\". The styles:
 ${styles.map((s) => `- ${s}: ${STYLE_GUIDE[s]}`).join("\n")}`;
 }
 

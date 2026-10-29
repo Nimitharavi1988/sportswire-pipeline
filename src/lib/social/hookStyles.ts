@@ -13,11 +13,11 @@ export type HookStyle = "number" | "question" | "quote" | "reaction" | "contrast
 export type StoryType = "recap" | "breaking" | "opinion" | "preview" | "general";
 
 export const STYLE_GUIDE: Record<HookStyle, string> = {
-  number: "Build the hook around ONE number or result from the article that creates tension by itself, as two short fragments (for example \"168 yards. One win.\"). Use only numbers that appear in the article.",
+  number: "Build the hook around ONE number or result from the article that creates tension by itself, as two short fragments (for example \"Hurts: 168 yards. One win.\"). Use only numbers that appear in the article.",
   question: "Ask one short question that the article answers (who, how, why or what next). The answer must be in the article; never ask a question the article cannot answer.",
   quote: "Use a short exact quote from a named person, attributed: Name: \"quote\". The quote must appear word for word in the article.",
   reaction: "Lead with a named person's reaction, admission or reveal, in your own words and the article's own verb (for example \"Name admits X\", \"Name opens up on X\").",
-  contrast: "Set a result against what the article says happened around it, using two real facts (for example \"5 sacks. Still lost.\"): the strong number first, the surprising outcome second.",
+  contrast: "Set a result against what the article says happened around it, using two real facts (for example \"Rams: 5 sacks. Still lost.\"): the strong number first, the surprising outcome second.",
   record: "Lead with the record, first or milestone, but ONLY if the article itself calls it a record, a first, or historic. Otherwise use a different angle.",
   breaking: "Write it like a news alert: who did, signed, was ruled out or was named, plain and specific (for example \"X signs with Y\"). No hype words.",
   stakes: "Lead with what it means or what is now on the line, exactly as the article frames it.",
