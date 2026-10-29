@@ -266,7 +266,7 @@ async function postReelToYouTube(article: ArticleWithVertical, mp4: Buffer, capt
   const plainTitle = shortsTitleFor(hook, title0, spanish ? "es" : "en");
   // Title: under 60 characters, names first, no emoji or hashtags (YouTube rules, 2026-10-29; the decorated-title test is over).
   const title = plainTitle;
-  const description = shortsDescription(captions?.facebook ?? title0, hashtags, spanish ? "es" : "en", article.heroImageCredit);
+  const description = shortsDescription(captions?.facebook ?? title0, hashtags, spanish ? "es" : "en", article.heroImageCredit, { category: article.category, title: plainTitle });
   const tags = shortsTags({ category: article.category, title: plainTitle, names: [article.homeTeam, article.awayTeam, article.seriesLabel], hashtags, language: spanish ? "es" : "en" });
   return recordAttempt(article, "youtube", async () => {
     console.log("[youtube short] Uploading video...");

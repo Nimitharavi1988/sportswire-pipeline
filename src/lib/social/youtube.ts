@@ -137,6 +137,60 @@ const SPORT_TAGS: Record<"en" | "es", [string, string[]][]> = {
   ],
 };
 
+// The sport a category belongs to. "football/college-football" and "basketball/wnba" must not fall into soccer or the NBA.
+function sportKey(category: string | null | undefined): string {
+  const c = category ?? "";
+  if (c.includes("wnba")) return "wnba";
+  if (c.includes("college-football")) return "college-football";
+  if (c.includes("nfl") || c.startsWith("american-football")) return "american-football";
+  return c.split("/")[0];
+}
+
+// The broad sport hashtag the trending Shorts carry (#nfl, #cricket, #football, #futbol on 2026-10-29's charts).
+const SPORT_HASHTAG: Record<"en" | "es", Record<string, string>> = {
+  en: { "american-football": "#NFL", "college-football": "#CollegeFootball", cricket: "#Cricket", football: "#Football", wnba: "#WNBA", basketball: "#NBA", baseball: "#MLB", hockey: "#NHL", mma: "#UFC", boxing: "#Boxing", "formula-1": "#F1", tennis: "#Tennis", golf: "#Golf", volleyball: "#Volleyball", rugby: "#Rugby" },
+  es: { "american-football": "#NFL", "college-football": "#FutbolAmericano", cricket: "#Criquet", football: "#Futbol", wnba: "#WNBA", basketball: "#NBA", baseball: "#Beisbol", hockey: "#NHL", mma: "#UFC", boxing: "#Boxeo", "formula-1": "#F1", tennis: "#Tenis", golf: "#Golf" },
+};
+
+// Live events that viewers search and the trending charts carry: a hashtag and the tags for it. Matched on the title.
+const EVENTS: { re: RegExp; tag: string; tags: string[] }[] = [
+  { re: /india.{0,40}new zealand|new zealand.{0,40}india|\bind vs nz\b|\bindvnz\b/i, tag: "#INDvNZ", tags: ["India vs New Zealand", "ind vs nz", "Team India"] },
+  { re: /ballon d.?or|bal[oó]n de oro/i, tag: "#BallonDor", tags: ["Ballon d'Or 2026", "Balón de Oro 2026"] },
+  { re: /world series/i, tag: "#WorldSeries", tags: ["World Series 2026", "MLB World Series"] },
+  { re: /wnba finals/i, tag: "#WNBAFinals", tags: ["WNBA Finals 2026", "WNBA Finals"] },
+  { re: /super bowl/i, tag: "#SuperBowl", tags: ["Super Bowl"] },
+  { re: /nba finals/i, tag: "#NBAFinals", tags: ["NBA Finals"] },
+  { re: /champions league|liga de campeones/i, tag: "#ChampionsLeague", tags: ["Champions League", "UEFA Champions League"] },
+  { re: /cl[aá]sico/i, tag: "#ElClasico", tags: ["El Clásico", "Real Madrid vs Barcelona"] },
+  { re: /premier league/i, tag: "#PremierLeague", tags: ["Premier League"] },
+  { re: /\bipl\b/i, tag: "#IPL", tags: ["IPL"] },
+  { re: /t20 world cup/i, tag: "#T20WorldCup", tags: ["T20 World Cup"] },
+  { re: /world cup|mundial/i, tag: "#WorldCup", tags: ["World Cup"] },
+];
+export const eventFor = (title: string | null | undefined) => EVENTS.find((e) => e.re.test(title ?? ""));
+
+// Other spellings of the same name or team that viewers type.
+const ALIASES: Record<string, string> = {
+  "stephen curry": "Steph Curry", "steph curry": "Stephen Curry", "76ers": "Sixers", sixers: "76ers", "manchester city": "Man City", "man city": "Manchester City",
+  "manchester united": "Man United", "man united": "Manchester United", "patrick mahomes": "Pat Mahomes", "giannis antetokounmpo": "Giannis", "caitlin clark": "Caitlin Clark Fever",
+  "real madrid": "Madrid", "barcelona": "Barça", "atlético de madrid": "Atletico Madrid", "bayern munich": "Bayern", "tottenham hotspur": "Spurs", "spurs": "Tottenham",
+};
+
+// The two hashtags shown above the video (the third is #Shorts): the event or the story's own specific one first, then the broad sport
+// tag, never the brand tags (#SportsWireLive, #SportsNews) unless nothing else exists. Trending Shorts carry #nfl, #cricket, #futbol.
+const GENERIC_HASHTAG = /^#(sportswirelive|sportsnews|noticiasdeportivas|deportes|shorts|sports|news|noticias)$/i;
+export function descriptionHashtags(hashtags: string[], category: string | null | undefined, title: string | null | undefined, language: "en" | "es" = "en"): string[] {
+  const all = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : "#" + h)).filter((h) => h.toLowerCase() !== "#shorts")));
+  const broadSet = new Set(Object.values(SPORT_HASHTAG[language]).map((h) => h.toLowerCase()));
+  const specific = all.filter((h) => !GENERIC_HASHTAG.test(h) && !broadSet.has(h.toLowerCase()));
+  const broadOwn = all.filter((h) => broadSet.has(h.toLowerCase()));
+  const broad = SPORT_HASHTAG[language][sportKey(category)];
+  const ordered = [eventFor(title)?.tag, specific[0], broad, ...specific.slice(1), ...broadOwn, ...all.filter((h) => GENERIC_HASHTAG.test(h))].filter((h): h is string => Boolean(h));
+  const out: string[] = [];
+  for (const h of ordered) if (!out.some((o) => o.toLowerCase() === h.toLowerCase())) out.push(h);
+  return out.slice(0, 2);
+}
+
 const BRAND_TAGS = new Set(["sportswirelive", "sportsnews", "noticiasdeportivas", "shorts"]);
 
 // Tags for a Short: the story's own names first (people and teams from the hashtags, the teams and series
@@ -160,17 +214,23 @@ export function shortsTags(input: { category?: string | null; names?: (string | 
   const out: string[] = [];
   const add = (t: string | null | undefined) => {
     const v = (t ?? "").replace(/\s+/g, " ").trim();
-    if (v.length >= 2 && v.length <= 40 && !out.some((o) => o.toLowerCase() === v.toLowerCase())) out.push(v);
+    const key = (x: string) => x.toLowerCase().replace(/\s+/g, "");
+    if (v.length >= 2 && v.length <= 40 && !out.some((o) => key(o) === key(v))) out.push(v);
   };
+  // People first, from the title as written ("LeBron James"): a hashtag split at every capital would give "Le Bron James".
+  for (const n of namesInTitle(input.title ?? "")) add(n);
   for (const h of input.hashtags ?? []) {
     const bare = h.replace(/^#/, "");
     if (BRAND_TAGS.has(bare.toLowerCase())) continue;
     add(bare.replace(/([a-z\u00e0-\u00ff])([A-Z])/g, "$1 $2"));
   }
-  for (const n of namesInTitle(input.title ?? "")) add(n);
   for (const n of input.names ?? []) add(n);
+  for (const t of eventFor(input.title)?.tags ?? []) add(t);
+  for (const n of [...namesInTitle(input.title ?? ""), ...(input.names ?? [])]) { const alias = n ? ALIASES[n.toLowerCase()] : undefined; if (alias) add(alias); }
+  // The same name without accents (Mbappé / Mbappe): viewers type both.
+  for (const t of [...out]) { const plain = t.normalize("NFD").replace(/[̀-ͯ]/g, ""); if (plain !== t && out.length < 15) add(plain); }
   const cat = input.category ?? "";
-  const sportTags = SPORT_TAGS[lang].find(([c]) => cat === c || cat.startsWith(c + "/"))?.[1] ?? [];
+  const sportTags = SPORT_TAGS[lang].find(([c]) => c === sportKey(cat))?.[1] ?? [];
   for (const t of sportTags) add(t);
   // Shorts with fewer than 7 tags got about half the views of those with 7 to 9 (2026-10-29): top up from the sport's main phrase.
   if (sportTags[0] && out.length < 6) { add(lang === "es" ? sportTags[0] + " hoy" : sportTags[0] + " today"); add(lang === "es" ? sportTags[0] + " última hora" : sportTags[0] + " latest"); }
@@ -249,8 +309,8 @@ export function shortsTitleFor(hook: string | null | undefined, headline: string
 
 // YouTube rules (2026-10-29): no link in the description (YouTube holds back Shorts that link off the platform), and at most
 // three hashtags, the story's two most specific plus #Shorts. A photo credit stays (the licence needs it): it has no link in it.
-export function shortsDescription(summary: string, hashtags: string[], language: "en" | "es" = "en", photoCredit?: string | null): string {
-  const own = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.toLowerCase() !== "#shorts"))).slice(0, 2);
+export function shortsDescription(summary: string, hashtags: string[], language: "en" | "es" = "en", photoCredit?: string | null, story?: { category?: string | null; title?: string | null }): string {
+  const own = story ? descriptionHashtags(hashtags, story.category, story.title, language) : Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.toLowerCase() !== "#shorts"))).slice(0, 2);
   const tags = [...own, "#Shorts"];
   const ask = language === "es" ? "¿Qué opinas? Cuéntanos en los comentarios." : "What's your take? Tell us in the comments.";
   const follow = language === "es" ? "Suscríbete a Sports Wire Live en Español para noticias deportivas diarias." : "Follow The Sports Live Wire for daily sports news.";
