@@ -1,6 +1,6 @@
 import { categoryEmoji } from "@/lib/categoryDisplay";
 import { socialArticleUrl } from "./trackedLink";
-import { captionVariantFor, shortReelCaption } from "./captionVariant";
+import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -17,7 +17,7 @@ import { musicStyleFor, type ReelMusicStyle } from "./reelMusic";
 import { reelThemeFor, type ReelTheme, type ReelFont } from "./reelThemes";
 import { resolvePageAccessToken, translationFor } from "./facebook";
 import { LOCALES } from "@/lib/i18n/locales";
-import { selectInstagramHashtags, selectFacebookHashtags } from "./hashtagRepertoire";
+import { selectInstagramHashtags, selectFacebookHashtags, selectTopicInstagramHashtags } from "./hashtagRepertoire";
 import { reelTagsFor } from "./reelTags";
 import { instagramCoolingDown } from "./metaCooldown";
 import { logDecision, setDecisionContext, clearDecisionContext, decisionContextFor } from "./decisionLog";
@@ -142,11 +142,13 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
   const creditLine = article.heroImageCredit ? `\n\n📷 ${article.heroImageCredit}` : "";
   // 4 specific tags + brand: more than that reads as spam and adds no reach.
   const spanish = topicPage?.locale === "es";
-  const hashtags = (spanish && topicPage?.hashtags ? topicPage.hashtags(article.title, article.category).slice(0, 5) : selectInstagramHashtags(article.title, article.category, 4)).join(" ");
+  const hashtags = (spanish && topicPage?.hashtags ? topicPage.hashtags(article.title, article.category).slice(0, 5) : topicPage ? selectTopicInstagramHashtags(article.title, article.category, 4) : selectInstagramHashtags(article.title, article.category, 4)).join(" ");
   const cta = spanish
     ? "💬 ¿Qué opinas? Cuéntanos en los comentarios\n👉 Toda la información — enlace en la bio\n🔔 Síguenos para más noticias deportivas"
     : `💬 What's your take? Tell us in the comments\n👉 Full breakdown — link in bio\n🔔 ${topicPage ? "Follow us for daily sports news" : "Follow @sportswirelivenews for daily sports news"}`;
-  const caption = `${emoji} ${captions?.instagram ?? article.title}\n\n${cta}${creditLine}\n\n${hashtags}`;
+  const leadText = captions?.instagram ?? article.title;
+  // Topic Pages without their own question test: the closing question goes first (questionFirst, 2026-10-28).
+  const caption = `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(leadText) : leadText}\n\n${cta}${creditLine}\n\n${hashtags}`;
   const tags = reelTagsFor(article.title, article.category);
 
   const createContainer = (withTags: boolean) =>
@@ -223,7 +225,7 @@ async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, cap
   // hashtags stay); the other half keep the usual caption.
   const description = shortCaption
     ? `${emoji} ${shortReelCaption(captions?.facebook ?? article.title)}${creditLine}\n\n${hashtags}`
-    : `${emoji} ${captions?.facebook ?? article.title}\n\n${spanish ? "Toda la información" : "Full breakdown"}: ${articleUrl}${creditLine}\n\n${hashtags}`;
+    : `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(captions?.facebook ?? article.title) : captions?.facebook ?? article.title}\n\n${spanish ? "Toda la información" : "Full breakdown"}: ${articleUrl}${creditLine}\n\n${hashtags}`;
 
   return recordAttempt(article, "facebook", async () => {
     console.log("[facebook reel] Starting upload...");
@@ -262,9 +264,9 @@ async function postReelToYouTube(article: ArticleWithVertical, mp4: Buffer, capt
   const spanish = topicPage?.locale === "es";
   const hashtags = topicPage?.hashtags ? topicPage.hashtags(title0, article.category) : selectFacebookHashtags(title0, article.category);
   const plainTitle = shortsTitleFor(hook, title0, spanish ? "es" : "en");
-  // Title test (youtube.ts titleVariantFor): half the Shorts get the sport emoji and two of the story's hashtags.
-  const title = titleVariantFor(article.id) === "decorated" ? decorateShortsTitle(plainTitle, categoryEmoji(article.category), hashtags) : plainTitle;
-  const description = shortsDescription(captions?.facebook ?? title0, articleUrl, hashtags, spanish ? "es" : "en");
+  // Title: under 60 characters, names first, no emoji or hashtags (YouTube rules, 2026-10-29; the decorated-title test is over).
+  const title = plainTitle;
+  const description = shortsDescription(captions?.facebook ?? title0, hashtags, spanish ? "es" : "en", article.heroImageCredit);
   const tags = shortsTags({ category: article.category, names: [article.homeTeam, article.awayTeam, article.seriesLabel], hashtags, language: spanish ? "es" : "en" });
   return recordAttempt(article, "youtube", async () => {
     console.log("[youtube short] Uploading video...");
@@ -399,7 +401,7 @@ export async function postReel(
   // What this reel was made with, recorded with its outcome by recordAttempt (decisionLog.ts).
   // The reel's opening: half the stories get the fast one, half the classic (the control); recorded in the decision log.
   const opening = openingFor(article.id);
-  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening }));
+  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
   const score = await loadScoreStrip(article.title, locale === "es" ? "es" : "en");

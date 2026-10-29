@@ -28,7 +28,10 @@ export function youtubeSlotOpen(postedLast24h: number, lastPostedAt: Date | null
   if (lastPostedAt && now.getTime() - lastPostedAt.getTime() < minGapMin * 60_000) return false;
   return true;
 }
-const TITLE_MAX = 100;
+// A Short's title stays under 60 characters (2026-10-29, YouTube rules): it leads with the names and the comparison, and
+// the rest is cut at a word. The older decorated-title test keeps its own 100-character limit (DECORATED_TITLE_MAX).
+const TITLE_MAX = 60;
+const DECORATED_TITLE_MAX = 100;
 
 // Two channels share one Google Cloud project (and client ID/secret); each has its own refresh token,
 // because the token decides which channel a video goes to.
@@ -63,7 +66,7 @@ export function youtubeConfigured(channel: YoutubeChannel = "en"): boolean {
     && Boolean(process.env.YOUTUBE_CLIENT_ID && process.env.YOUTUBE_CLIENT_SECRET && refreshTokenFor(channel));
 }
 
-// Title <= 100 chars, trimmed on a word boundary with an ellipsis. No "#Shorts" in it: a hashtag in the
+// Title <= 60 chars, trimmed on a word boundary with an ellipsis. No "#Shorts" in it: a hashtag in the
 // title replaces the description's hashtags above the video, and #Shorts goes in the description.
 export function shortsTitle(headline: string): string {
   const clean = headline.replace(/\s+/g, " ").trim();
@@ -200,7 +203,7 @@ export function titleVariantFor(articleId: string): TitleVariant {
 // it takes fewer hashtags, then none (emoji only), and a title too long even for the emoji stays plain: an ellipsis in the middle of a
 // word before the hashtags looked worse than no extras. A title that already has an emoji, or a #tag, gets no second one.
 const GENERIC_TAG = /^#(sportswirelive|deportes|deporte|sports|sportsnews|noticias|news|viral|trending)$/i;
-export function decorateShortsTitle(title: string, emoji: string | null | undefined, hashtags: string[], max = TITLE_MAX): string {
+export function decorateShortsTitle(title: string, emoji: string | null | undefined, hashtags: string[], max = DECORATED_TITLE_MAX): string {
   const all = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.length > 2 && h.toLowerCase() !== "#shorts")));
   const tags = [...all.filter((h) => !GENERIC_TAG.test(h)), ...all.filter((h) => GENERIC_TAG.test(h))].slice(0, 2);
   const lead = emoji && !/\p{Extended_Pictographic}/u.test(title) ? `${emoji} ` : "";
@@ -219,14 +222,15 @@ export function shortsTitleFor(hook: string | null | undefined, headline: string
   return shortsTitle(h.length >= 12 && hookNamesSomeone(h) ? h : headline);
 }
 
-export function shortsDescription(summary: string, articleUrl: string, hashtags: string[], language: "en" | "es" = "en"): string {
-  // The first three hashtags show above the video, so the story's own come first and #Shorts goes last.
-  const own = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.toLowerCase() !== "#shorts"))).slice(0, 7);
+// YouTube rules (2026-10-29): no link in the description (YouTube holds back Shorts that link off the platform), and at most
+// three hashtags, the story's two most specific plus #Shorts. A photo credit stays (the licence needs it): it has no link in it.
+export function shortsDescription(summary: string, hashtags: string[], language: "en" | "es" = "en", photoCredit?: string | null): string {
+  const own = Array.from(new Set(hashtags.map((h) => (h.startsWith("#") ? h : `#${h}`)).filter((h) => h.toLowerCase() !== "#shorts"))).slice(0, 2);
   const tags = [...own, "#Shorts"];
   const ask = language === "es" ? "¿Qué opinas? Cuéntanos en los comentarios." : "What's your take? Tell us in the comments.";
-  const read = language === "es" ? "Nota completa" : "Read the full story";
   const follow = language === "es" ? "Suscríbete a Sports Wire Live en Español para noticias deportivas diarias." : "Follow The Sports Live Wire for daily sports news.";
-  return `${summary.trim()}\n\n${ask}\n\n${read}: ${articleUrl}\n\n${follow}\n\n${tags.join(" ")}`;
+  const credit = photoCredit && !/https?:\/\//i.test(photoCredit) ? `📷 ${photoCredit}\n\n` : "";
+  return `${summary.trim()}\n\n${ask}\n\n${credit}${follow}\n\n${tags.join(" ")}`;
 }
 
 async function accessToken(refreshToken: string): Promise<string> {

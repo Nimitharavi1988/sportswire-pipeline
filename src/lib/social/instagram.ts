@@ -4,7 +4,7 @@ import { article as articleTable, vertical as verticalTable, socialPost as socia
 import { eq, and, notInArray } from "drizzle-orm";
 import { createId } from "@paralleldrive/cuid2";
 import { generateSocialCaptions } from "@/lib/ingestion/commentary";
-import { selectInstagramHashtags } from "./hashtagRepertoire";
+import { selectInstagramHashtags, selectTopicInstagramHashtags } from "./hashtagRepertoire";
 import { resolvePageAccessToken, translationFor } from "./facebook";
 import { instagramCoolingDown } from "./metaCooldown";
 import { TOPIC_INSTAGRAM_KEYS, type FacebookDestination } from "./facebookDestinations";
@@ -87,7 +87,7 @@ export async function postArticleToInstagram(articleId: string, topicPage?: Face
   const postBody = tr ? tr.body : article.body;
   const captions = postBody ? await generateSocialCaptions(postTitle, postBody, topicPage?.locale) : null;
   const captionBody = captions?.instagram ?? postTitle;
-  const pickHashtags = topicPage?.locale && topicPage.hashtags ? topicPage.hashtags : selectInstagramHashtags;
+  const pickHashtags = topicPage?.locale && topicPage.hashtags ? topicPage.hashtags : topicPage ? selectTopicInstagramHashtags : selectInstagramHashtags;
   const hashtags = pickHashtags(article.title, article.category).join(" ");
   const caption = `${emoji} ${captionBody}\n\n${hashtags}`;
 

@@ -4,6 +4,8 @@ import { isStarStory } from "./freshness";
 export interface ReelFeatureInput {
   category: string;
   title: string;
+  // The Facebook hashtags the reel goes out with, so reach can be compared by tag type later (2026-10-28).
+  hashtags?: string[];
   publishedAt: Date | null;
   trendingScore: number | null;
   now: Date;
@@ -44,5 +46,6 @@ export function reelFeatures(i: ReelFeatureInput): Record<string, unknown> {
     hookStyle: i.hookMeta?.style ?? null,
     hookChosenBy: i.hookMeta?.by ?? null,
     hookCandidates: i.hookMeta?.candidates ?? null,
+    hashtags: i.hashtags ?? null,
   };
 }

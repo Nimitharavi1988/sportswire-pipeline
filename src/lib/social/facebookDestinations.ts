@@ -9,7 +9,7 @@
  * Tokens come from GitHub Actions secrets (never stored here); Page ids
  * are public. A destination whose token isn't set is simply skipped.
  */
-import { selectFightHashtags, selectIndiaCricketHashtags, selectSpanishHashtags } from "./hashtagRepertoire";
+import { selectFightHashtags, selectIndiaCricketHashtags, selectSpanishHashtags, selectTopicFacebookHashtags } from "./hashtagRepertoire";
 import { LOCALES } from "../i18n/locales";
 import { STAR_TERMS } from "./freshness";
 
@@ -208,6 +208,8 @@ export const FOOTBALL_PAGE: FacebookDestination = {
   // Reels (2026-10-08): 8 a day on Facebook and Instagram, strongest stories only.
   // Reel cap raised 8 -> 12 on 2026-10-15 (facebook reels median 18-152 here against 2 on the big Pages; the topic Instagram photo posts were cut to free the Meta request budget).
   reels: { dailyCap: 12, perRunCap: 1, minTrending: 30, instagram: true },
+  // Team, star and event tags for the sport (topicHashtags.ts), the sport's own tag, then the usual ones.
+  hashtags: selectTopicFacebookHashtags,
   dailyCap: 25,
   perRunCap: 2,
   // UK/Europe evening is the peak; still awake for the Americas' afternoon.
@@ -227,6 +229,8 @@ export const US_SPORTS_PAGE: FacebookDestination = {
   instagramHandle: "sportswireuslive",
   // Reel cap raised 10 -> 14 on 2026-10-15: the Page was at its cap every day and its Instagram account had 4 of 100 daily posts used.
   reels: { dailyCap: 14, perRunCap: 1, minTrending: 30, instagram: true },
+  // Team, star and event tags for the sport (topicHashtags.ts), the sport's own tag, then the usual ones.
+  hashtags: selectTopicFacebookHashtags,
   dailyCap: 100,
   perRunCap: 3,
   activeHours: { timeZone: "America/New_York", start: 8, end: 24 },

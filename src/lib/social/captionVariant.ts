@@ -24,3 +24,15 @@ export function shortReelCaption(caption: string, maxWords = 22): string {
   if (words.length <= maxWords) return first;
   return words.slice(0, maxWords).join(" ").replace(/[,;:—-]+$/, "") + "…";
 }
+
+// Topic-Page reel captions (2026-10-28, from Facebook's own reel suggestions): a caption that ends in a debate question
+// gets the question moved to the front, so it is the first line a viewer reads. A caption with no closing question, or
+// one that is only a question, is returned as it was. Pure, unit-tested.
+export function questionFirst(caption: string): string {
+  const flat = caption.replace(/\s+/g, " ").trim();
+  const parts = flat.split(/(?<=[.!?]["”’)]?)\s+/);
+  if (parts.length < 2) return caption;
+  const last = parts[parts.length - 1];
+  if (!/\?["”’)]?$/.test(last) || last.split(" ").length < 3) return caption;
+  return `${last}\n\n${parts.slice(0, -1).join(" ")}`;
+}

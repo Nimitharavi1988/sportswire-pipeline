@@ -283,10 +283,10 @@ export const REEL_MUSIC_STYLE_NAMES = Object.keys(REEL_MUSIC_STYLES) as ReelMusi
 // Chosen by words in the headline, so no new data is needed. Within the
 // pool, the pick is still stable per story (musicStyleFor).
 const MOODS: { re: RegExp; pool: ReelMusicStyle[] }[] = [
-  { re: /controvers|slams?|blasts?|furious|outrage|backlash|scandal|suspend|banned?|dispute|row|clash|accus|crisis|blow|stunned|shock/i, pool: ["cinematic", "hype", "trap"] },
-  { re: /injur|ruled out|retire|farewell|tribute|passes away|dies|heartbreak|emotional|tears/i, pool: ["smooth", "lofi", "ambient", "chill"] },
-  { re: /century|hundred|record|champion|gold|title|historic|milestone|hat-?trick|stunning|thrash|crush|maiden|clinch|wins?|beats?/i, pool: ["dance", "drive", "anthem", "epic", "hype"] },
-  { re: /preview|how to watch|date, venue|live stream|schedule|predictions?|odds|props|picks/i, pool: ["groove", "chill", "drive", "lofi"] },
+  { re: /controvers|slams?\b|blasts?\b|furious|outrage|backlash|scandal|suspend|banned?\b|dispute|row\b|clash|accus|crisis|blow\b|stunned|shock/i, pool: ["cinematic", "hype", "trap"] },
+  { re: /injur|ruled out|retire|farewell|tribute|passes away|dies\b|heartbreak|emotional|tears/i, pool: ["smooth", "lofi", "ambient", "chill"] },
+  { re: /century|hundred|record|champion|gold|title\b|historic|milestone|hat-?trick|stunning|thrash|crush|maiden|clinch|wins?\b|beats?\b/i, pool: ["dance", "drive", "anthem", "epic", "hype"] },
+  { re: /preview|how to watch|date, venue|live stream|schedule|predictions?|odds\b|props\b|picks\b/i, pool: ["groove", "chill", "drive", "lofi"] },
 ];
 const SPORT_POOLS: [string, ReelMusicStyle[]][] = [
   ["cricket", ["drive", "anthem", "dance", "groove", "epic"]],
