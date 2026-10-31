@@ -205,11 +205,12 @@ export function selectSpanishHashtags(title: string, category: string): string[]
 // Instagram also gets the other spelling of a name (#StephCurry for Stephen Curry).
 function topicMerge(title: string, category: string, usual: string[], slots: number, alias = false): string[] {
   const brand = usual[usual.length - 1];
-  const { specifics, sport } = topicTags(title, category);
+  const { specifics, sport, events } = topicTags(title, category);
   const event = eventFor(title)?.tag;
+  // Football also names the league or cup right after its team (#Lille #Ligue1), ahead of the broad #Football.
   // Cricket has no broad sport tag in topicTags, so its three most specific tags (matchup, player, team) lead instead of two.
   const lead = slots > 2 ? (category.startsWith("cricket") ? 3 : 2) : 1;
-  const body = [...(event ? [event] : []), ...specifics.slice(0, lead), ...(alias ? aliasHashtags(title) : []), ...(sport ? [sport] : []), ...usual.slice(0, -1), ...specifics.slice(lead)];
+  const body = [...(event ? [event] : []), ...specifics.slice(0, lead), ...(category.startsWith("football") ? events.slice(0, 1) : []), ...(alias ? aliasHashtags(title) : []), ...(sport ? [sport] : []), ...usual.slice(0, -1), ...specifics.slice(lead)];
   return [...new Set(body)].filter((t) => t !== brand).slice(0, slots).concat(brand);
 }
 export function selectTopicFacebookHashtags(title: string, category: string): string[] {
@@ -279,6 +280,8 @@ export function selectIndiaCricketHashtags(title: string): string[] {
 // generic "#SportsNews #SportsWireLive". Fight fans follow the card (#UFC333), the
 // fighter and the promotion, so those come first. Only this Page uses it: the main
 // Page keeps selectFacebookHashtags (guarded by mainPageGuard.test.ts).
+// Fighters by "Full Name|Alias". The first part is the tag; any part in the headline matches. The list comes from the 45 days of
+// MMA and boxing headlines to 2026-10-31 (the names that appeared most), on top of the long-standing stars.
 const FIGHTERS = [
   "Jon Jones", "Islam Makhachev", "Conor McGregor", "Alex Pereira", "Amanda Nunes", "Petr Yan",
   "Ilia Topuria", "Sean O'Malley", "Merab Dvalishvili", "Max Holloway", "Charles Oliveira",
@@ -286,21 +289,57 @@ const FIGHTERS = [
   "Valentina Shevchenko", "Zhang Weili", "Khabib Nurmagomedov", "Francis Ngannou", "Tom Aspinall",
   "Canelo Alvarez", "Tyson Fury", "Oleksandr Usyk", "Anthony Joshua", "Jake Paul", "Naoya Inoue",
   "Terence Crawford", "Gervonta Davis", "Devin Haney", "Ryan Garcia", "Shakur Stevenson",
-  "Dmitry Bivol", "Artur Beterbiev", "Dana White",
+  "Dmitry Bivol", "Artur Beterbiev",
+  "Alexander Volkanovski|Alex Volkanovski", "Natalia Silva", "Sean Strickland", "Wang Cong|Cong Wang", "Movsar Evloev", "Diego Lopes",
+  "Joaquin Buckley", "Payton Talbott", "Justin Gaethje", "Farid Basharat", "Mike Malott", "Josh Hokit", "Alexander Volkov",
+  "Brendan Allen", "Carlos Prates", "Sergei Pavlovich", "Paddy Pimblett", "Aljamain Sterling", "Ciryl Gane", "Jose Aldo",
+  "Michael Morales", "Arman Tsarukyan", "Kayla Harrison", "Gable Steveson", "Deiveson Figueiredo", "Israel Adesanya",
+  "Johnny Walker", "Khamzat Chimaev", "Demetrious Johnson", "Ronda Rousey", "Cain Velasquez", "Nassourdine Imavov", "Jean Silva",
+  "Renato Moicano", "Manel Kape", "Grant Dawson", "Erin Blanchfield", "Dillon Danis", "Jorge Masvidal", "Gerald Meerschaert",
+  "Raoni Barcelos", "Jasmine Jasudavicius", "Ismael Bonfim", "Esteban Ribovics", "Roberto Soldic", "Sean Brady", "Brock Lesnar",
+  "Court McGee", "Michael Chandler", "Jiri Prochazka", "Magomed Ankalaev", "Henry Cejudo", "Tony Ferguson", "Nate Diaz",
+];
+// People who are in the news without fighting that night: tagged only when no fighter is named.
+const NOT_FIGHTING = ["Dana White", "Joe Rogan", "Daniel Cormier"];
+
+const plainText = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+// The promotions and series a headline names.
+const PROMOTIONS: [string, RegExp][] = [
+  ["#UFC", /\bUFC\b/i],
+  ["#PFL", /\bPFL\b/],
+  ["#Bellator", /\bBellator\b/i],
+  ["#DWCS", /\bContender Series\b|\bDWCS\b/i],
 ];
 
+// "#UFC333", "#UFCVegas124" (UFC Vegas 124), "#UFCAbuDhabi" style cards, or "#UFCFightNight".
+function cardTag(title: string): string | null {
+  const numbered = title.match(/\bUFC\s*(\d{2,3})\b/i);
+  if (numbered) return `#UFC${numbered[1]}`;
+  const place = title.match(/\bUFC\s+([A-Z][a-z]+(?: [A-Z][a-z]+)?)\s+(\d{2,3})\b/);
+  if (place) return `#UFC${place[1].replace(/ /g, "")}${place[2]}`;
+  if (/\bUFC Fight Night\b/i.test(title)) return "#UFCFightNight";
+  return null;
+}
+
+// Card, then up to two named fighters (earliest first; the boss and commentators only when no fighter is named), then the
+// promotion, then the sport's own tags. Three at most (Facebook).
 export function selectFightHashtags(title: string, category: string): string[] {
   const tags: string[] = [];
-  const card = title.match(/\bUFC\s*(\d{2,3})\b/i);
-  if (card) tags.push(`#UFC${card[1]}`);
-  else if (/\bUFC Fight Night\b/i.test(title)) tags.push("#UFCFightNight");
-  // Accent-agnostic like the rest of the repertoire; the earliest-named fighter first.
-  const plain = title.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const named = FIGHTERS.map((n) => ({ n, at: plain.indexOf(n.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase()) }))
-    .filter((f) => f.at >= 0)
+  const card = cardTag(title);
+  if (card) tags.push(card);
+  const plain = plainText(title);
+  const find = (names: string[]) => names
+    .map((entry) => {
+      const [full, ...aliases] = entry.split("|");
+      const at = Math.min(...[full, ...aliases].map((n) => plain.search(new RegExp(`(^|[^a-z])${plainText(n).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`))).filter((i) => i >= 0), Infinity);
+      return { full, at };
+    })
+    .filter((f) => f.at !== Infinity)
     .sort((a, b) => a.at - b.at);
-  for (const f of named.slice(0, 1)) tags.push(personHashtag(f.n));
-  if (/\bUFC\b/i.test(title)) tags.push("#UFC");
+  const fighters = find(FIGHTERS);
+  for (const f of (fighters.length ? fighters : find(NOT_FIGHTING)).slice(0, 2)) tags.push(personHashtag(f.full));
+  for (const [tag, re] of PROMOTIONS) if (re.test(title)) { tags.push(tag); break; }
   const boxing = category === "boxing";
   for (const filler of boxing ? ["#Boxing", "#BoxingNews"] : ["#MMA", "#MMANews"]) {
     if (tags.length >= 3) break;

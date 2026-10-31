@@ -111,9 +111,26 @@ const SETS: Record<string, SportSet> = {
       ["#Juventus", /\bJuventus\b/], ["#Inter", /\bInter Milan\b|\bInternazionale\b/], ["#ACMilan", /\bAC Milan\b/], ["#Napoli", /\bNapoli\b/], ["#ASRoma", /\bAS Roma\b/], ["#Atalanta", /\bAtalanta\b/], ["#Lazio", /\bLazio\b/],
       ["#PSG", /\bPSG\b|\bParis Saint-Germain\b/], ["#OM", /\bMarseille\b/], ["#OL", /\bLyon\b/], ["#ASMonaco", /\bMonaco\b/],
       ["#Ajax", /\bAjax\b/], ["#Benfica", /\bBenfica\b/], ["#FCPorto", /\bPorto\b/], ["#SportingCP", /\bSporting CP\b/], ["#Galatasaray", /\bGalatasaray\b/],
+      // Clubs that earned no tag in October 2026 (979 of 1,703 football headlines had none): the English second tier, Italy, France,
+      // Germany and the Netherlands beyond the big clubs, Brazil, Argentina, Colombia and more MLS sides.
+      ["#Watford", /\bWatford\b/], ["#NorwichCity", /\bNorwich\b/], ["#Millwall", /\bMillwall\b/], ["#BristolCity", /\bBristol City\b/], ["#BCFC", /\bBirmingham City\b/],
+      ["#SwanseaCity", /\bSwansea\b/], ["#SaintsFC", /\bSouthampton\b/], ["#Pompey", /\bPortsmouth\b/], ["#CharltonAthletic", /\bCharlton\b/], ["#Wrexham", /\bWrexham\b/],
+      ["#PNE", /\bPreston\b/], ["#Boro", /\bMiddlesbrough\b/], ["#Burnley", /\bBurnley\b/], ["#CardiffCity", /\bCardiff\b/], ["#StokeCity", /\bStoke\b/],
+      ["#Rovers", /\bBlackburn\b/], ["#DerbyCounty", /\bDerby County\b/], ["#Rangers", /\bRangers\b/],
+      ["#Torino", /\bTorino\b/], ["#Como", /\bComo\b/], ["#Lecce", /\bLecce\b/], ["#Bologna", /\bBologna\b/], ["#Udinese", /\bUdinese\b/], ["#Fiorentina", /\bFiorentina\b/],
+      ["#Lille", /\bLille\b/], ["#RCLens", /\bLens\b/], ["#StadeRennais", /\bRennes\b|\bRennais\b/], ["#Auxerre", /\bAuxerre\b/], ["#Strasbourg", /\bStrasbourg\b/], ["#Lorient", /\bLorient\b/], ["#Angers", /\bAngers\b/],
+      ["#VfBStuttgart", /\bStuttgart\b/], ["#TSGHoffenheim", /\bHoffenheim\b/], ["#Schalke04", /\bSchalke\b/], ["#Paderborn", /\bPaderborn\b/], ["#Gladbach", /\bGladbach\b|\bM.nchengladbach\b/], ["#UnionBerlin", /\bUnion Berlin\b/], ["#Feyenoord", /\bFeyenoord\b/], ["#PSV", /\bPSV\b/],
+      ["#Corinthians", /\bCorinthians\b/], ["#Flamengo", /\bFlamengo\b/], ["#Palmeiras", /\bPalmeiras\b/], ["#Fluminense", /\bFluminense\b/], ["#SantosFC", /\bSantos\b/], ["#Cruzeiro", /\bCruzeiro\b/],
+      ["#Vasco", /\bVasco\b/], ["#ECBahia", /\bBahia\b/], ["#Internacional", /\bInternacional\b/], ["#Mirassol", /\bMirassol\b/], ["#RBBragantino", /\bBragantino\b/], ["#Coritiba", /\bCoritiba\b/], ["#AtleticoMineiro", /\bAtl[eé]tico Mineiro\b/],
+      ["#Independiente", /\bIndependiente\b/], ["#RacingClub", /\bRacing Club\b/], ["#Estudiantes", /\bEstudiantes\b/], ["#GimnasiaLP", /\bGimnasia\b/], ["#RosarioCentral", /\bRosario Central\b/],
+      ["#Millonarios", /\bMillonarios\b/], ["#AtleticoNacional", /\bAtl[eé]tico Nacional\b/], ["#AmericaDeCali", /\bAm[eé]rica de Cali\b/],
+      ["#ChicagoFire", /\bChicago Fire\b/], ["#ColumbusCrew", /\bColumbus Crew\b/], ["#PhiladelphiaUnion", /\bPhiladelphia Union\b/], ["#CharlotteFC", /\bCharlotte FC\b/], ["#OrlandoCity", /\bOrlando City\b/],
+      ["#ColoradoRapids", /\bColorado Rapids\b/], ["#SJEarthquakes", /\bEarthquakes\b/], ["#SportingKC", /\bSporting Kansas City\b/], ["#FCCincinnati", /\bFC Cincinnati\b/], ["#RSL", /\bReal Salt Lake\b/],
       ["#InterMiami", /\bInter Miami\b/], ["#LAFC", /\bLAFC\b/], ["#LAGalaxy", /\bLA Galaxy\b/], ["#SoundersFC", /\bSounders\b/], ["#ClubAmerica", /\bClub Am[eé]rica\b/], ["#Chivas", /\bChivas\b/], ["#TigresUANL", /\bTigres\b/], ["#Rayados", /\bRayados\b|\bMonterrey\b/], ["#BocaJuniors", /\bBoca Juniors\b/], ["#RiverPlate", /\bRiver Plate\b/],
     ],
-    events: [["#ChampionsLeague", /\bChampions League\b/], ["#PremierLeague", /\bPremier League\b/], ["#LaLiga", /\bLa Liga\b/], ["#Bundesliga", /\bBundesliga\b/], ["#SerieA", /\bSerie A\b/], ["#Ligue1", /\bLigue 1\b/], ["#MLS", /\bMLS\b/], ["#LigaMX", /\bLiga MX\b/], ["#EuropaLeague", /\bEuropa League\b/], ["#WorldCup", /\bWorld Cup\b/], ["#FACup", /\bFA Cup\b/]],
+    events: [["#ChampionsLeague", /\bChampions League\b/], ["#PremierLeague", /\bPremier League\b/], ["#LaLiga", /\bLa Liga\b/], ["#Bundesliga", /\bBundesliga\b/], ["#SerieA", /\bSerie A\b/], ["#Ligue1", /\bLigue 1\b/], ["#MLS", /\bMLS\b/], ["#LigaMX", /\bLiga MX\b/], ["#EuropaLeague", /\bEuropa League\b/], ["#WorldCup", /\bWorld Cup\b/], ["#FACup", /\bFA Cup\b/],
+      ["#EFLChampionship", /\bChampionship\b/], ["#LigaProfesional", /\bLiga Profesional\b/], ["#Brasileirao", /\bBrasileir[aã]o\b/], ["#Eredivisie", /\bEredivisie\b/], ["#PrimeiraLiga", /\bPrimeira Liga\b/],
+      ["#CopaLibertadores", /\bLibertadores\b/], ["#CopaSudamericana", /\bSudamericana\b/], ["#EuropaConferenceLeague", /\bConference League\b/]],
   },
   mma: {
     sport: "#MMA",
@@ -189,9 +206,10 @@ const patternTags = (list: [string, RegExp][] | undefined, title: string): [stri
 
 // The tags a headline earns in its sport: stars first (the most specific), then teams, then events. `sport` is the sport's own
 // broad tag (#MLB, #UFC...), offered even when no name is found so a story never falls back to #SportsNews alone.
-export function topicTags(title: string, category: string): { specifics: string[]; sport: string | null } {
+// `events` is the competitions the headline names (leagues, cups), already inside `specifics` after the names.
+export function topicTags(title: string, category: string): { specifics: string[]; sport: string | null; events: string[] } {
   const set = SETS[category.split("/")[0]];
-  if (!set) return { specifics: [], sport: null };
+  if (!set) return { specifics: [], sport: null, events: [] };
   const specifics = [...(set.derived?.(title) ?? []), ...(set.rivalries ?? []).filter(([, re]) => re.test(title)).map(([tag]) => tag), ...inOrder(starTags(set.stars ?? [], title)), ...inOrder(patternTags(set.teams, title)), ...inOrder(patternTags(set.events, title))];
-  return { specifics: [...new Set(specifics)], sport: set.sport };
+  return { specifics: [...new Set(specifics)], sport: set.sport, events: inOrder(patternTags(set.events, title)) };
 }
