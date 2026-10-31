@@ -39,7 +39,9 @@ export const SPEECH_NAMES: Record<string, string> = {
   "Oleksandr Usyk": "Oleksandr Oosik", Usyk: "Oosik", "Canelo Alvarez": "Kahnelo Alvarez", Canelo: "Kahnelo", "Artur Beterbiev": "Artur Beterbeeyev", Beterbiev: "Beterbeeyev",
   "Dmitry Bivol": "Dmitry Beevol", Bivol: "Beevol", "Naoya Inoue": "Nah-oya Eenohway", Inoue: "Eenohway", "Joe Rogan": "Joe Rogan", "Daniel Cormier": "Daniel Cormeer",
   "Sean O'Malley": "Shawn O'Malley", "Sean Strickland": "Shawn Strickland", "Sean Brady": "Shawn Brady", "Jose Aldo": "Hose Aldo", "Natalia Silva": "Natalia Silva",
-  // football
+  // football: club abbreviations a voice would spell out or say wrongly
+  "Manchester Utd": "Manchester United", "Man Utd": "Man United", Utd: "United", PSG: "Paris Saint Germain", FC: "", AFC: "", CF: "", BK: "",
+  // football: people and places
   "Kylian Mbappe": "Keelian Embappay", "Kylian Mbappé": "Keelian Embappay", Mbappe: "Embappay", Mbappé: "Embappay", "Erling Haaland": "Erling Hawlund",
   Haaland: "Hawlund", "Vinicius Junior": "Veeneesius Junior", Vinicius: "Veeneesius", Vinícius: "Veeneesius", "Robert Lewandowski": "Robert Levandovskee",
   Lewandowski: "Levandovskee", "Florian Wirtz": "Florian Virts", Wirtz: "Virts", "Lamine Yamal": "Lameen Yamahl", Yamal: "Yamahl", Dembélé: "Dombelay",
@@ -60,5 +62,6 @@ const ENTRIES: [RegExp, string][] = Object.entries(SPEECH_NAMES)
 export function applySpeechNames(text: string): string {
   let out = text;
   for (const [re, spoken] of ENTRIES) out = out.replace(re, spoken);
-  return out;
+  // A dropped word (FC) leaves a double space or a space before punctuation.
+  return out.replace(/\s{2,}/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim();
 }
