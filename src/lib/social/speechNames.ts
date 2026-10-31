@@ -3,6 +3,7 @@
 // the spoken text changes; the caption and the on-screen text keep the real spelling. Start of the list: the cricket, MMA/boxing and
 // football names that came up most in the October headlines. Grow it from the listening tests (a name heard wrong goes in here).
 // Pure, unit-tested.
+import { CLUB_SPEECH } from "./speechClubs";
 
 // "Real spelling": "how it sounds". Longer keys are applied first, so a full name wins over its surname.
 export const SPEECH_NAMES: Record<string, string> = {
@@ -40,7 +41,12 @@ export const SPEECH_NAMES: Record<string, string> = {
   "Dmitry Bivol": "Dmitry Beevol", Bivol: "Beevol", "Naoya Inoue": "Nah-oya Eenohway", Inoue: "Eenohway", "Joe Rogan": "Joe Rogan", "Daniel Cormier": "Daniel Cormeer",
   "Sean O'Malley": "Shawn O'Malley", "Sean Strickland": "Shawn Strickland", "Sean Brady": "Shawn Brady", "Jose Aldo": "Hose Aldo", "Natalia Silva": "Natalia Silva",
   // football: club abbreviations a voice would spell out or say wrongly
-  "Manchester Utd": "Manchester United", "Man Utd": "Man United", Utd: "United", PSG: "Paris Saint Germain", FC: "", AFC: "", CF: "", BK: "",
+  "Manchester Utd": "Manchester United", "Man Utd": "Man United", Utd: "United", PSG: "Paris Saint Germain", FC: "", AFC: "", CF: "", SC: "", BK: "",
+  // fight acronyms a voice spells out letter by letter with gaps ("U... F... C"): said as the full name instead. Cricket ones (T20, IPL)
+  // were heard fine as written (2026-10-31), so they are left alone.
+  UFC: "Ultimate Fighting Championship", PFL: "Professional Fighters League", MMA: "mixed martial arts", TKO: "technical knockout", KO: "knockout",
+  // names that kept turning up in October headlines
+  Ranji: "Ranjee", Yuvraj: "Yoovraaj", Kashvi: "Kashvee", Vidarbha: "Vidarbah", Warriorz: "Warriors", Molineux: "Molinoo",
   // football: people and places
   "Kylian Mbappe": "Keelian Embappay", "Kylian Mbappé": "Keelian Embappay", Mbappe: "Embappay", Mbappé: "Embappay", "Erling Haaland": "Erling Hawlund",
   Haaland: "Hawlund", "Vinicius Junior": "Veeneesius Junior", Vinicius: "Veeneesius", Vinícius: "Veeneesius", "Robert Lewandowski": "Robert Levandovskee",
@@ -52,7 +58,9 @@ export const SPEECH_NAMES: Record<string, string> = {
   Palmeiras: "Palmayras", Flamengo: "Flamengo", Corinthians: "Corinthians", Mirassol: "Meerassol", "Rosario Central": "Rosario Central",
 };
 
-const ENTRIES: [RegExp, string][] = Object.entries(SPEECH_NAMES)
+const ALL: Record<string, string> = { ...SPEECH_NAMES, ...CLUB_SPEECH };
+
+const ENTRIES: [RegExp, string][] = Object.entries(ALL)
   .filter(([k, v]) => k !== v)
   .sort((a, b) => b[0].length - a[0].length)
   .map(([k, v]) => [new RegExp(`(?<![\\p{L}\\p{N}])${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}\\p{N}])`, "gu"), v]);
@@ -64,4 +72,20 @@ export function applySpeechNames(text: string): string {
   for (const [re, spoken] of ENTRIES) out = out.replace(re, spoken);
   // A dropped word (FC) leaves a double space or a space before punctuation.
   return out.replace(/\s{2,}/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim();
+}
+
+// Capitalised words in the text (not the first word of a sentence) that are not in the list: candidates for the next round of
+// respelling. Logged with each voiced reel so the list grows from what the voice actually met. Words of 4+ letters, no acronyms.
+export function unknownNames(text: string): string[] {
+  const known = new Set(Object.entries(ALL).flatMap(([k, v]) => [...k.split(" "), ...v.split(" ")]));
+  const out = new Set<string>();
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  for (const sentence of sentences) {
+    sentence.split(/\s+/).forEach((raw, i) => {
+      const w = raw.replace(/^[^\p{L}]+|[^\p{L}'’-]+$/gu, "");
+      if (i === 0 || w.length < 4 || !/^\p{Lu}[\p{L}'’-]*$/u.test(w) || /^\p{Lu}+$/u.test(w) || known.has(w)) return;
+      out.add(w);
+    });
+  }
+  return [...out];
 }
