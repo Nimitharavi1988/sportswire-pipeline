@@ -16,11 +16,9 @@ jobs:
           mkdir out && cd out
           B=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
           curl -sL -o kokoro.onnx "$B/kokoro-v1.0.int8.onnx"; curl -sL -o voices.bin "$B/voices-v1.0.bin"
-          run() { python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin bm_george en-gb 1.05 "$1.wav" 42 "$2"; }
-          run acr_as_written "Sean Brady is out of the UFC main event after the IPL star was named in the BCCI squad."
-          run acr_spaced "Sean Brady is out of the U F C main event after the I P L star was named in the B C C I squad."
-          run acr_words "Sean Brady is out of the You Eff See main event after the Eye Pee El star was named in the Bee See See Eye squad."
-          run acr_dotted "Sean Brady is out of the U.F.C. main event after the I.P.L. star was named in the B.C.C.I. squad."
-          run mma_lead "Mixed martial arts news. Shawn Brady is out of the main event."
+          for key in clubs_england_spain clubs_italy_france clubs_germany clubs_rest; do
+            T=$(python3 -c "import json;print(json.load(open('../.github/data/tts-texts.json'))['$key'])")
+            python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin bm_george en-gb 1.0 "$key.wav" 42 "$T"
+          done
       - uses: actions/upload-artifact@v4
         with: { name: voice-samples, path: out/*.wav }
