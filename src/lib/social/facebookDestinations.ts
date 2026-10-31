@@ -184,7 +184,8 @@ export const CRICKETLIVE_PAGE: FacebookDestination = {
   // Reel volume test from 2026-10-15: 10 a day (was 20), best-ranked stories first (topicReels.ts ranks by trending, drama
   // and match day). Median plays per reel had fallen from 40 at 10 a day to 2 at 20 a day with total plays flat. Greenfield
   // stays at 24 a day as the comparison; compare median and total plays per Page after about a week, then decide.
-  reels: { dailyCap: 10, perRunCap: 1, minTrending: 25, activeHours: { timeZone: "Asia/Kolkata", start: 11, end: 24 }, instagram: true, youtube: true },
+  // Raised 10 -> 16 on 2026-10-31 (user asked, with the voice pilot needing more voiced reels to compare): Instagram's publishing quota was 12 of 100 and the free AI quota had room.
+  reels: { dailyCap: 16, perRunCap: 1, minTrending: 25, activeHours: { timeZone: "Asia/Kolkata", start: 11, end: 24 }, instagram: true, youtube: true },
   instagramId: "17841422405517404", // @sportswirecricketlive
   instagramHandle: "sportswirecricketlive",
 };
