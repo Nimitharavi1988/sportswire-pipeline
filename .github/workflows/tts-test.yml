@@ -5,16 +5,34 @@ permissions: { contents: read }
 jobs:
   tts:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install piper-tts
+      - run: pip install piper-tts kokoro-onnx soundfile
       - name: Samples
         run: |
           mkdir out && cd out
-          python3 -m piper.download_voices en_US-ljspeech-medium
-          python3 -m piper -m en_US-ljspeech-medium -f reel_voice.wav -- "Cricket news. Kuldeep Yadav may miss the INDvNZ XI. Venue, Eden Gardens."
-          ls -la
+          TEXT="Cricket news. Kuldeep Yadav may miss the India versus New Zealand eleven. Venue, Eden Gardens."
+          B=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+          curl -sL -o kokoro.onnx "$B/kokoro-v1.0.int8.onnx"; curl -sL -o voices.bin "$B/voices-v1.0.bin"
+          ls -la kokoro.onnx voices.bin
+          cat > k.py <<'PY'
+          import sys, time, soundfile as sf
+          from kokoro_onnx import Kokoro
+          text = sys.argv[1]
+          k = Kokoro("kokoro.onnx", "voices.bin")
+          for v, sp in [("am_michael", 1.1), ("am_adam", 1.1), ("bm_george", 1.1), ("af_heart", 1.1), ("af_bella", 1.1), ("bf_emma", 1.1)]:
+              t = time.time()
+              s, sr = k.create(text, voice=v, speed=sp, lang="en-gb" if v.startswith("b") else "en-us")
+              sf.write(f"kokoro_{v}.wav", s, sr)
+              print(f"kokoro_{v}: {time.time()-t:.1f} s, {len(s)/sr:.1f} s of audio")
+          PY
+          python3 k.py "$TEXT"
+          python3 -m piper.download_voices en_US-ljspeech-high en_US-libritts-high
+          python3 -m piper -m en_US-ljspeech-high -f piper_ljspeech_high.wav -- "$TEXT"
+          python3 -m piper -m en_US-libritts-high -s 20 -f piper_libritts_high_s20.wav -- "$TEXT"
+          python3 -m piper -m en_US-ljspeech-high --length-scale 0.9 --noise-scale 0.8 --noise-w-scale 1.0 -f piper_ljspeech_high_lively.wav -- "$TEXT"
+          ls -la *.wav
       - uses: actions/upload-artifact@v4
         with: { name: voice-samples, path: out/*.wav }
