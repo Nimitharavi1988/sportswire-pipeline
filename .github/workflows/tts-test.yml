@@ -1,0 +1,29 @@
+name: Voice test (no posting)
+# Manual only. Tries free offline text-to-speech voices on a GitHub runner and uploads the samples; posts nothing.
+on: workflow_dispatch
+permissions: { contents: read }
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install piper-tts
+      - name: Samples
+        run: |
+          mkdir out && cd out
+          TEXT="MMA news. Islam Makhachev says his next fight could be among his last, and Merab Dvalishvili, Luka Doncic and Victor Wembanyama are all in the news."
+          for V in en_US-lessac-medium en_US-ryan-high en_US-amy-medium en_GB-alan-medium en_US-hfc_male-medium; do
+            python3 -m piper.download_voices "$V" || { echo "download failed: $V"; continue; }
+            START=$(date +%s.%N)
+            python3 -m piper -m "$V" -f "$V.wav" -- "$TEXT" || echo "synth failed: $V"
+            END=$(date +%s.%N)
+            echo "$V: $(echo "$END - $START" | bc) s, $(stat -c %s "$V.wav" 2>/dev/null) bytes"
+            echo "--- model card $V"
+            L=$(echo "$V" | cut -d- -f1); N=$(echo "$V" | cut -d- -f2); Q=$(echo "$V" | cut -d- -f3)
+            curl -sL "https://huggingface.co/rhasspy/piper-voices/raw/main/${L%%_*}/$L/$N/$Q/MODEL_CARD" | head -30 || true
+          done
+          ls -la
+      - uses: actions/upload-artifact@v4
+        with: { name: voice-samples, path: out/*.wav }
