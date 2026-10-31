@@ -22,6 +22,14 @@ export function shortReelCaption(caption: string, maxWords = 22): string {
   for (let k = 1; first.split(" ").length < 8 && k < parts.length; k++) first += " " + parts[k];
   const words = first.split(" ");
   if (words.length <= maxWords) return first;
+  // A sentence a little over the limit stays whole: cutting it mid-thought ("...caused by the realization that a rematch…")
+  // leaves a caption that reads badly and gives search nothing to read. Past the hard limit it is cut at the last clause break
+  // (comma, semicolon, dash) that leaves at least 12 words, and only then at the word limit.
+  if (words.length <= maxWords + 8) return first;
+  const head = words.slice(0, maxWords + 8);
+  for (let i = head.length - 1; i >= 11; i--) {
+    if (/[,;—–]$/.test(head[i])) return head.slice(0, i + 1).join(" ").replace(/[,;:—–-]+$/, "") + ".";
+  }
   return words.slice(0, maxWords).join(" ").replace(/[,;:—-]+$/, "") + "…";
 }
 
