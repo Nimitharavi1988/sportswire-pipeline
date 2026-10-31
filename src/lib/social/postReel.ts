@@ -2,6 +2,7 @@ import { categoryEmoji } from "@/lib/categoryDisplay";
 import { socialArticleUrl } from "./trackedLink";
 import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
 import { withSportKeyword } from "./reelKeyword";
+import { graphErrorDetail, recoverPublishedReel } from "./igPublishRecovery";
 import { buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
@@ -51,7 +52,11 @@ type ArticleWithVertical = typeof articleTable.$inferSelect & { vertical: typeof
 
 async function graphJson(res: Response, what: string): Promise<any> {
   const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.error) throw new Error(data?.error?.message ?? `${what} failed (${res.status})`);
+  if (!res.ok || data?.error) {
+    // Meta's own error code and trace id, to diagnose the failures that carry only a word like "Fatal" (never the token).
+    if (data?.error) console.warn(`[graph] ${what} error: ${graphErrorDetail(data)}`);
+    throw new Error(data?.error?.message ?? `${what} failed (${res.status})`);
+  }
   return data;
 }
 
@@ -198,14 +203,24 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
     }
 
     console.log("[instagram reel] Publishing...");
-    const published = await graphJson(
-      await fetch(`${GRAPH}/${igUserId}/media_publish`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ creation_id: container.id, access_token: accessToken }),
-      }),
-      "Instagram reel publish"
-    );
+    const publishStarted = Date.now();
+    let published: any;
+    try {
+      published = await graphJson(
+        await fetch(`${GRAPH}/${igUserId}/media_publish`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ creation_id: container.id, access_token: accessToken }),
+        }),
+        "Instagram reel publish"
+      );
+    } catch (err) {
+      // The publish call can answer "Fatal" although the reel is live (igPublishRecovery.ts): check before calling it a failure.
+      const liveId = await recoverPublishedReel({ graph: GRAPH, igUserId, accessToken, containerId: container.id, sinceMs: publishStarted - 120_000 });
+      if (!liveId) throw err;
+      console.warn(`[instagram reel] publish call errored (${err instanceof Error ? err.message : err}) but the reel is live: ${liveId}`);
+      return liveId;
+    }
     if (!published.id) throw new Error("Instagram returned no media id");
     return published.id as string;
   }, topicPage ? `${topicPage.key}-reel` : DESTINATION);
