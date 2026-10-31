@@ -2,7 +2,7 @@ import { categoryEmoji } from "@/lib/categoryDisplay";
 import { socialArticleUrl } from "./trackedLink";
 import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
 import { withSportKeyword } from "./reelKeyword";
-import { buildVoiceScript, pickVoice, synthesizeVoice, voiceoverFor } from "./voiceover";
+import { buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -412,7 +412,9 @@ export async function postReel(
   const opening = openingFor(article.id);
   // Voice pilot (voiceover.ts): English reels of the listed topic Pages, half the stories; never the main Page. Silent on any failure.
   const voiceName = !locale && opts.topicPage && voiceoverFor(opts.topicPage.key, article.id) ? pickVoice(article.id) : null;
-  const voicePath = voiceName ? await synthesizeVoice(buildVoiceScript(content, article.category), voiceName) : null;
+  const voice = voiceName ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), voiceName, [...article.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 17)) : null;
+  const voicePath = voice?.path ?? null;
+  if (voice) console.log(`[voiceover] ${voiceName}, ${voice.seconds.toFixed(1)} s: ${voice.text}`);
   setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
