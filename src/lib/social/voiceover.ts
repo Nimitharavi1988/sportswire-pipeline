@@ -59,26 +59,36 @@ export function spokenText(raw: string): string {
 }
 
 // The sport as it is said first. A voice spells an acronym out letter by letter with gaps ("M... M... A"), so MMA is said in full.
-const SPOKEN_LEADS: Record<string, string> = { mma: "Mixed martial arts" };
-const spokenLead = (category: string) => SPOKEN_LEADS[category.split("/")[0]] ?? sportKeywordFor(category);
+const SPOKEN_LEADS: Record<string, string> = { mma: "mixed martial arts" };
+// The opener, joined to the sentence: "In football, ..." (not a separate "Football news." line, 2026-10-31). Acronym sports keep their capitals.
+const spokenLead = (category: string): string | null => {
+  const word = SPOKEN_LEADS[category.split("/")[0]] ?? sportKeywordFor(category);
+  if (!word) return null;
+  const name = /^[A-Z]{2,}$/.test(word) ? `the ${word}` : word.toLowerCase();
+  return `In ${name},`;
+};
+// The sentence after the opener starts in lower case when its first word is an ordinary one; a name keeps its capital.
+const COMMON_STARTS = new Set(["The", "A", "An", "After", "Before", "As", "With", "Why", "How", "What", "Who", "When", "Will", "Can", "Could", "Is", "Are", "Do", "Does", "Did", "Should", "Would", "Despite", "Following", "Amid", "Ahead", "On", "At", "For", "From", "It", "He", "She", "They", "This", "That", "Two", "Three", "Four", "Five", "New"]);
+const afterOpener = (s: string) => s.replace(/^(\p{Lu}\p{Ll}*)\b/u, (w) => (COMMON_STARTS.has(w) ? w.toLowerCase() : w));
 
 // What is sent to the voice: the spoken text with each hard name respelled for the way it sounds.
 export const forVoice = (spoken: string) => applySpeechNames(spoken);
 
-// The story's description read aloud: its first sentence (cut at a clause break if long), with "Cricket news." first when that
+// The story's description read aloud: its first sentence (cut at a clause break if long), opened with "In cricket," when that
 // sentence never names the sport. Without a description, the on-screen hook. At most about 30 words.
 export function buildVoiceScript(content: { hook: string }, category: string, description?: string | null): string {
   const lead = spokenLead(category);
   const base = description?.trim() ? shortReelCaption(description, 26) : content.hook;
   const sentence = spokenText(base);
   const needsLead = lead && withSportKeyword(sentence, category) !== sentence;
-  return forVoice([needsLead ? `${lead} news.` : "", sentence].filter(Boolean).join(" "));
+  return forVoice(needsLead ? `${lead} ${afterOpener(sentence)}` : sentence);
 }
 
 // The shorter text used when the description will not fit the reel: the sport and the hook.
 export function buildShortScript(content: { hook: string }, category: string): string {
   const lead = spokenLead(category);
-  return forVoice([lead ? `${lead} news.` : "", spokenText(content.hook)].filter(Boolean).join(" "));
+  const hook = spokenText(content.hook);
+  return forVoice(lead ? `${lead} ${afterOpener(hook)}` : hook);
 }
 
 // Length in seconds of a PCM WAV file (what Kokoro writes), or 0 when it is not one.
