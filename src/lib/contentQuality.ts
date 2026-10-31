@@ -55,6 +55,8 @@ export const MIN_MATCH_DATA_BODY_LENGTH = 80;
 export function hasRealImage(article: { heroImageUrl: string | null; homeCrestUrl: string | null }): boolean {
   // A team crest pair is real by construction (never a stock photo).
   if (article.homeCrestUrl) return true;
+  // Our own fallback card (fallbackCards.ts) is not a photo: see hasUsableImage.
+  if (isFallbackCard(article.heroImageUrl)) return false;
   // A real photo — from the publisher's own RSS feed, a real player photo,
   // or a real match photo — as opposed to the generic category stock-photo
   // fallback (always served from Pexels; see stockImages.ts).
@@ -78,6 +80,12 @@ export function hasRealImage(article: { heroImageUrl: string | null; homeCrestUr
   return false;
 }
 
+// Good enough to publish and to post: a real image, or one of our fallback cards for a story that is real news but has no photo
+// (trial on Football, fallbackCards.ts). The homepage and article page keep using hasRealImage.
+export function hasUsableImage(article: { heroImageUrl: string | null; homeCrestUrl: string | null }): boolean {
+  return hasRealImage(article) || isFallbackCard(article.heroImageUrl);
+}
+
 export function isAutoApprovable(article: {
   body: string | null;
   heroImageUrl: string | null;
@@ -96,7 +104,7 @@ export function isAutoApprovable(article: {
   // real fixtures whose provider has no logo for a team (e.g. ESPN's
   // Markhor v Sui Northern, 2026-09-26). Social posts still need a real
   // image — see autoApprove.ts.
-  if (!isMatchDataSource(article.sourceName) && !hasRealImage(article)) return false;
+  if (!isMatchDataSource(article.sourceName) && !hasUsableImage(article)) return false;
   // Player-news items (playerNewsFeeds.ts) used to be judged on image alone,
   // since a body was structurally impossible for them — Google News' own
   // RSS snippet for these is just the headline repeated. That's no longer
@@ -108,3 +116,4 @@ export function isAutoApprovable(article: {
   const minLength = isMatchDataSource(article.sourceName) ? MIN_MATCH_DATA_BODY_LENGTH : MIN_BODY_LENGTH;
   return Boolean(article.body && article.body.trim().length >= minLength);
 }
+import { isFallbackCard } from "./fallbackCards";

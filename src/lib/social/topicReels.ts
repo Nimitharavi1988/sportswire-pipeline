@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { article, socialPost } from "@/db/schema";
 import { and, count, desc, eq, gte, inArray, like, ilike, or } from "drizzle-orm";
 import { isMatchDataSource } from "../matchDataSources";
-import { hasRealImage } from "../contentQuality";
+import { hasUsableImage } from "../contentQuality";
 import { isPromotional } from "../thinContent";
 import { isSimilarToAny } from "../titleSimilarity";
 import { TOPIC_DESTINATIONS, destinationRunCap, localDayStart, prioritise } from "./facebookDestinations";
@@ -115,7 +115,7 @@ export async function postTopicReels(now: Date = new Date()): Promise<void> {
         const isBreaking = breakingIds.has(a.id);
         if (isBreaking && (!d.breaking || breakingSlotFor(a.id) !== d.breaking.slot)) continue;
         if (normalDone && !isBreaking && fanoutDone) continue;
-        if ((fanout ? ownDone : done).has(a.id) || !a.body || !hasRealImage(a) || !d.matches(a)) continue;
+        if ((fanout ? ownDone : done).has(a.id) || !a.body || !hasUsableImage(a) || !d.matches(a)) continue;
         // Never an advertisement (thinContent.ts).
         if (isPromotional(a.title)) continue;
         // Match rows are scorecards, not stories to narrate.

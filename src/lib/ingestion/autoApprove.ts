@@ -24,7 +24,8 @@ import { sendPushToAllSubscribers } from "../push";
 import { pushIsConfigured } from "../pushConfig";
 import { isSimilarToAny } from "../titleSimilarity";
 import { orderForVariety } from "../social/reelVariety";
-import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, isAutoApprovable, isHockeyNewsSyndicated } from "../contentQuality";
+import { cardAllowedFor, cardUrlFor, fallbackCardCategories, FALLBACK_CARD_AFTER_HOURS } from "../fallbackCards";
+import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, hasUsableImage, isAutoApprovable, isHockeyNewsSyndicated } from "../contentQuality";
 
 // Runs as a follow-up step right after runIngest.ts in the same GitHub
 // Actions job — everything reaching "pending_review" has already passed
@@ -311,7 +312,7 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
   type SocialCandidate = { id: string; slug: string; title: string; trendingScore: number; category: string; sourceName: string; publishedAt?: Date | null };
   // A post needs a real picture; match rows can publish without one (see
   // isAutoApprovable), so the image bar is applied here for social.
-  const postable = (a: { heroImageUrl: string | null; homeCrestUrl: string | null }) => hasRealImage(a);
+  const postable = (a: { heroImageUrl: string | null; homeCrestUrl: string | null }) => hasUsableImage(a);
   const backlogCutoff = new Date(Date.now() - SOCIAL_BACKLOG_WINDOW_MS);
   // Separate, much shorter window than the already-posted exclusion above —
   // "don't post the same real-world event twice" is a same-day problem (a
@@ -759,11 +760,28 @@ async function sendAutomatedPushNotifications(toApprove: { id: string; slug: str
 // to give budget-queued items their turn, not to protect bad content.
 export const STALE_NO_IMAGE_HOURS = 12;
 
+// A real story that still has no real photo after FALLBACK_CARD_AFTER_HOURS gets one of our branded cards instead of waiting to be
+// rejected (fallbackCards.ts). Only the sports listed in FALLBACK_CARD_CATEGORIES, only stories that already have a write-up, are not
+// match-data rows and are not advertisements: "if the news is real", published with a plain picture rather than not at all.
+export async function assignFallbackCards(): Promise<number> {
+  if (fallbackCardCategories().length === 0) return 0;
+  const cutoff = new Date(Date.now() - FALLBACK_CARD_AFTER_HOURS * 60 * 60 * 1000);
+  const candidates = await db.select({ id: article.id, title: article.title, category: article.category, body: article.body, sourceName: article.sourceName, heroImageUrl: article.heroImageUrl, homeCrestUrl: article.homeCrestUrl })
+    .from(article).where(and(eq(article.status, "pending_review"), lt(article.createdAt, cutoff)));
+  let n = 0;
+  for (const a of candidates) {
+    if (!cardAllowedFor(a.category) || !a.body || hasUsableImage(a) || isMatchDataSource(a.sourceName) || isPromotional(a.title)) continue;
+    await db.update(article).set({ heroImageUrl: cardUrlFor(a.category, a.id, process.env.SITE_URL?.startsWith("https://") ? process.env.SITE_URL : undefined), heroImageCredit: null, heroImageCreditUrl: null, updatedAt: new Date() }).where(eq(article.id, a.id));
+    n++;
+  }
+  return n;
+}
+
 export async function rejectStaleNoImageArticles(): Promise<number> {
   const cutoff = new Date(Date.now() - STALE_NO_IMAGE_HOURS * 60 * 60 * 1000);
   const candidates = await db.select({ id: article.id, heroImageUrl: article.heroImageUrl, homeCrestUrl: article.homeCrestUrl })
     .from(article).where(and(eq(article.status, "pending_review"), lt(article.createdAt, cutoff)));
-  const staleIds = candidates.filter((a) => !hasRealImage(a)).map((a) => a.id);
+  const staleIds = candidates.filter((a) => !hasUsableImage(a)).map((a) => a.id);
   if (staleIds.length === 0) return 0;
 
   await db.update(article).set({ status: "rejected", rejectionReason: `no real photo after ${STALE_NO_IMAGE_HOURS}h`, updatedAt: new Date() }).where(inArray(article.id, staleIds));
@@ -801,7 +819,13 @@ export async function rejectStaleNoBodyArticles(): Promise<number> {
 }
 
 if (require.main === module) {
-  autoApproveValidArticles()
+  // Branded cards for real stories with no photo go on first, so the approval below sees them (fallbackCards.ts; off unless FALLBACK_CARD_CATEGORIES is set).
+  assignFallbackCards()
+    .then((cards) => {
+      if (cards) console.log(`Fallback cards: ${cards} story(ies) with no real photo after ${FALLBACK_CARD_AFTER_HOURS}h got a branded card.`);
+    })
+    .catch((err) => console.error("Fallback cards failed (continuing):", err))
+    .then(() => autoApproveValidArticles())
     .then(async ({ checked, approved }) => {
       console.log(`Auto-approve: ${approved} of ${checked} pending articles met the bar (real image + body >= ${MIN_BODY_LENGTH} chars, or >= ${MIN_MATCH_DATA_BODY_LENGTH} for match-data sources).`);
       const rejectedNoImage = await rejectStaleNoImageArticles();
