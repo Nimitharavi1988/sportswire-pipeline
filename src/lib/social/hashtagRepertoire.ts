@@ -1,5 +1,6 @@
 import { TRACKED_PLAYERS } from "../players";
 import { topicTags } from "./topicHashtags";
+import { cricketSpecifics } from "./cricketHashtags";
 import { entitiesInTitle } from "./entityHandles";
 import { eventFor, aliasHashtags } from "./youtube";
 // Explicit-request tag repertoire (2026-09-22) — deterministic, code-side
@@ -206,7 +207,9 @@ function topicMerge(title: string, category: string, usual: string[], slots: num
   const brand = usual[usual.length - 1];
   const { specifics, sport } = topicTags(title, category);
   const event = eventFor(title)?.tag;
-  const body = [...(event ? [event] : []), ...specifics.slice(0, slots > 2 ? 2 : 1), ...(alias ? aliasHashtags(title) : []), ...(sport ? [sport] : []), ...usual.slice(0, -1), ...specifics.slice(slots > 2 ? 2 : 1)];
+  // Cricket has no broad sport tag in topicTags, so its three most specific tags (matchup, player, team) lead instead of two.
+  const lead = slots > 2 ? (category.startsWith("cricket") ? 3 : 2) : 1;
+  const body = [...(event ? [event] : []), ...specifics.slice(0, lead), ...(alias ? aliasHashtags(title) : []), ...(sport ? [sport] : []), ...usual.slice(0, -1), ...specifics.slice(lead)];
   return [...new Set(body)].filter((t) => t !== brand).slice(0, slots).concat(brand);
 }
 export function selectTopicFacebookHashtags(title: string, category: string): string[] {
@@ -260,24 +263,11 @@ export function personHashtag(name: string): string {
   return "#" + name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]/g, "");
 }
 
+// Matchup (#INDvWI, #PAKvSL), franchise or tournament, player, then the teams (cricketHashtags.ts). #TeamIndia only on a story
+// about India, so Afghanistan v Oman no longer carries it; generic tags fill what is left.
 export function selectIndiaCricketHashtags(title: string): string[] {
-  const tags: string[] = [];
-  const fixture = cricketFixtureTag(title);
-  if (fixture) tags.push(fixture);
-  const lower = title.toLowerCase();
-  // The player the headline leads with (earliest mention), not whoever
-  // comes first in the tracked list.
-  let player: { name: string; at: number } | null = null;
-  for (const p of TRACKED_PLAYERS) {
-    if (p.sport !== "cricket") continue;
-    for (const t of p.searchTerms) {
-      const at = lower.indexOf(t.toLowerCase());
-      if (at >= 0 && (!player || at < player.at)) player = { name: p.name, at };
-    }
-  }
-  if (player) tags.push(personHashtag(player.name));
-  if (/\b(india|team india|ind)\b/i.test(title)) tags.push("#TeamIndia");
-  for (const filler of ["#TeamIndia", "#CricketNews", "#Cricket"]) {
+  const tags = cricketSpecifics(title);
+  for (const filler of ["#CricketNews", "#Cricket"]) {
     if (tags.length >= 3) break;
     if (!tags.includes(filler)) tags.push(filler);
   }

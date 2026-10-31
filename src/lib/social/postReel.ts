@@ -142,7 +142,9 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
   const creditLine = article.heroImageCredit ? `\n\n📷 ${article.heroImageCredit}` : "";
   // 4 specific tags + brand: more than that reads as spam and adds no reach.
   const spanish = topicPage?.locale === "es";
-  const hashtags = (spanish && topicPage?.hashtags ? topicPage.hashtags(article.title, article.category).slice(0, 5) : topicPage ? selectTopicInstagramHashtags(article.title, article.category, 4) : selectInstagramHashtags(article.title, article.category, 4)).join(" ");
+  const hashtagList = spanish && topicPage?.hashtags ? topicPage.hashtags(article.title, article.category).slice(0, 5) : topicPage ? selectTopicInstagramHashtags(article.title, article.category, 4) : selectInstagramHashtags(article.title, article.category, 4);
+  // Instagram allows 5 tags. A cricket topic reel keeps its 3 most specific, swaps the 4th for the format tag, and ends with the brand tag.
+  const hashtags = (topicPage && !spanish && article.category.startsWith("cricket") ? [...hashtagList.slice(0, 3), "#CricketReels", ...hashtagList.slice(-1)] : hashtagList).filter((t, i, all) => all.indexOf(t) === i).join(" ");
   const cta = spanish
     ? "💬 ¿Qué opinas? Cuéntanos en los comentarios\n👉 Toda la información — enlace en la bio\n🔔 Síguenos para más noticias deportivas"
     : `💬 What's your take? Tell us in the comments\n👉 Full breakdown — link in bio\n🔔 ${topicPage ? "Follow us for daily sports news" : "Follow @sportswirelivenews for daily sports news"}`;

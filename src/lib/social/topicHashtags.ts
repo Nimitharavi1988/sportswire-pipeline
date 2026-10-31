@@ -3,18 +3,22 @@
 // boxing had no sport tag at all, and the big sports named a team or player on only 30-50% of stories.
 // Used by the topic selectors in hashtagRepertoire.ts; the main Page and main Instagram never call it. Pure, unit-tested.
 
+import { cricketSpecifics } from "./cricketHashtags";
+
 const strip = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 const tagOf = (name: string) => "#" + strip(name).replace(/[^A-Za-z0-9]/g, "");
 
 // "Full Name|Alias|Alias": the tag is the full name; any of the names (full or alias) in the headline matches.
 type Star = string;
 interface SportSet {
-  sport: string;                       // the sport's own tag, always offered as the broad one
+  sport: string | null;               // the sport's own tag, always offered as the broad one (cricket: none, its usual tags cover it)
   stars?: Star[];
   teams?: [tag: string, pattern: RegExp][];
   events?: [tag: string, pattern: RegExp][];
   // A matchup or debate: the tag counts only when the headline names both sides.
   rivalries?: [tag: string, pattern: RegExp][];
+  // Tags worked out from the headline in code (cricket: matchup, franchise, player, teams), already most-specific first.
+  derived?: (title: string) => string[];
 }
 
 const NBA_STARS: Star[] = [
@@ -49,6 +53,7 @@ const school = (...names: string[]): [string, RegExp][] => names.map((n) => [tag
 const both = (x: string, y: string) => new RegExp("^(?=[\\s\\S]*\\b(?:" + x + ")\\b)(?=[\\s\\S]*\\b(?:" + y + ")\\b)");
 
 const SETS: Record<string, SportSet> = {
+  cricket: { sport: null, derived: cricketSpecifics },
   basketball: { sport: "#NBA", stars: NBA_STARS, teams: NBA_TEAMS },
   "american-football": {
     sport: "#NFL",
@@ -187,6 +192,6 @@ const patternTags = (list: [string, RegExp][] | undefined, title: string): [stri
 export function topicTags(title: string, category: string): { specifics: string[]; sport: string | null } {
   const set = SETS[category.split("/")[0]];
   if (!set) return { specifics: [], sport: null };
-  const specifics = [...(set.rivalries ?? []).filter(([, re]) => re.test(title)).map(([tag]) => tag), ...inOrder(starTags(set.stars ?? [], title)), ...inOrder(patternTags(set.teams, title)), ...inOrder(patternTags(set.events, title))];
+  const specifics = [...(set.derived?.(title) ?? []), ...(set.rivalries ?? []).filter(([, re]) => re.test(title)).map(([tag]) => tag), ...inOrder(starTags(set.stars ?? [], title)), ...inOrder(patternTags(set.teams, title)), ...inOrder(patternTags(set.events, title))];
   return { specifics: [...new Set(specifics)], sport: set.sport };
 }
