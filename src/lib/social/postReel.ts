@@ -1,6 +1,7 @@
 import { categoryEmoji } from "@/lib/categoryDisplay";
 import { socialArticleUrl } from "./trackedLink";
 import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
+import { withSportKeyword } from "./reelKeyword";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -148,7 +149,7 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
   const cta = spanish
     ? "💬 ¿Qué opinas? Cuéntanos en los comentarios\n👉 Toda la información — enlace en la bio\n🔔 Síguenos para más noticias deportivas"
     : `💬 What's your take? Tell us in the comments\n👉 Full breakdown — link in bio\n🔔 ${topicPage ? "Follow us for daily sports news" : "Follow @sportswirelivenews for daily sports news"}`;
-  const leadText = captions?.instagram ?? article.title;
+  const leadText = withTopicKeyword(captions?.instagram ?? article.title, article.category, topicPage);
   // Topic Pages without their own question test: the closing question goes first (questionFirst, 2026-10-28).
   const caption = `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(leadText) : leadText}\n\n${cta}${creditLine}\n\n${hashtags}`;
   const tags = reelTagsFor(article.title, article.category);
@@ -212,6 +213,11 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
 // topicPage: post to a topic Page (facebookDestinations.ts) instead of the
 // main Page — its own token and posting history, and a caption that points
 // viewers at the Page (Follow) as well as the article.
+// Topic Pages (English) put the sport in the caption's first sentence when it is missing (reelKeyword.ts); the main Page and the Spanish Page keep their text.
+function withTopicKeyword(text: string, category: string, topicPage?: FacebookDestination): string {
+  return topicPage && topicPage.locale !== "es" ? withSportKeyword(text, category) : text;
+}
+
 async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, captions: SocialCaptions | null, articleUrl: string, topicPage?: FacebookDestination, shortCaption = false): Promise<boolean> {
   const pageId = topicPage ? topicPage.pageId : article.vertical.facebookPageId ?? process.env.FACEBOOK_PAGE_ID;
   const rawToken = topicPage ? process.env[topicPage.tokenEnv] : article.vertical.facebookPageAccessToken ?? process.env.FACEBOOK_PAGE_ACCESS_TOKEN;
@@ -226,8 +232,8 @@ async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, cap
   // own question-ending test): half the stories get just the opening sentence and no link (the photo credit and
   // hashtags stay); the other half keep the usual caption.
   const description = shortCaption
-    ? `${emoji} ${shortReelCaption(captions?.facebook ?? article.title)}${creditLine}\n\n${hashtags}`
-    : `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(captions?.facebook ?? article.title) : captions?.facebook ?? article.title}\n\n${spanish ? "Toda la información" : "Full breakdown"}: ${articleUrl}${creditLine}\n\n${hashtags}`;
+    ? `${emoji} ${shortReelCaption(withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage))}${creditLine}\n\n${hashtags}`
+    : `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage)) : withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage)}\n\n${spanish ? "Toda la información" : "Full breakdown"}: ${articleUrl}${creditLine}\n\n${hashtags}`;
 
   return recordAttempt(article, "facebook", async () => {
     console.log("[facebook reel] Starting upload...");
