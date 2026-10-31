@@ -213,6 +213,14 @@ export const FEEDS: RssFeed[] = [
   // transfer news (e.g. Man City/Man Utd stories with no literal "football"
   // or "premier league" in the title).
   { url: "https://www.skysports.com/rss/11095", category: "football", sourceName: "Sky Sports" },
+  // 2026-10-31: football was losing nearly all its news. In 3 days 696 editorial football stories were found but only 28
+  // published: 509 of them came through Google News (no article text, no photo: 0 got a write-up) and the direct feeds were just
+  // BBC, Sky, ESPN and CBS. These four were checked live the same day: each answers 200 with recent items and a picture on every
+  // item, and the site's own reader loads full text and the photo for their pages (the Telegraph was left out: http 402).
+  { url: "https://www.theguardian.com/football/rss", category: "football", sourceName: "The Guardian" },
+  { url: "https://www.fourfourtwo.com/feeds/all", category: "football", sourceName: "FourFourTwo" },
+  { url: "https://www.independent.co.uk/sport/football/rss", category: "football", sourceName: "The Independent" },
+  { url: "https://sports.yahoo.com/soccer/rss/", category: "football", sourceName: "Yahoo Sports" },
   { url: "http://www.espncricinfo.com/rss/content/story/feeds/0.xml", category: "cricket", sourceName: "ESPN Cricinfo" },
   // Cricinfo's India-specific country feed — overlaps with the general
   // cricket feed above for stories that make the global cut (the existing
