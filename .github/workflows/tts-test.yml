@@ -10,6 +10,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install kokoro-onnx soundfile
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Samples
         run: |
           mkdir out && cd out
@@ -22,17 +23,23 @@ jobs:
           text = sys.argv[1]
           k = Kokoro("kokoro.onnx", "voices.bin")
           print("voices:", [v for v in k.get_voices() if v.startswith("b") or v.startswith("a")])
-          def make(name, voice, speed=1.1):
-              s, sr = k.create(text, voice=voice, speed=speed, lang="en-gb" if name.startswith("gb") else "en-us")
-              sf.write(f"{name}.wav", s, sr)
+          def make(name, voice, speed=1.0):
+              try:
+                  s, sr = k.create(text, voice=voice, speed=speed, lang="en-gb" if name.startswith("gb") else "en-us")
+                  sf.write(f"{name}.wav", s, sr)
+              except Exception as e:
+                  print("skip", name, e)
+          # soft candidates, slower than before (1.0) so they sound relaxed
           for v in ["bm_fable", "bm_daniel", "bm_lewis", "bm_george"]:
               make(f"gb_{v}", v)
-          for v in ["bm_fable", "bm_daniel", "bm_lewis", "bf_emma"]:
+          for v in ["bf_isabella", "bf_lily", "bf_alice", "bf_emma"]:
+              make(f"gb_soft_{v}", v)
+          for v in ["af_nicole", "af_sky", "af_heart"]:
+              make(f"us_soft_{v}", v)
+          for v in ["bm_fable", "bm_daniel", "bf_isabella"]:
               make(f"gb_blend_george_{v}", k.get_voice_style("bm_george") * 0.5 + k.get_voice_style(v) * 0.5)
-          make("gb_george_fast", "bm_george", 1.2)
           PY
           python3 k.py "$TEXT"
-          FF=$(python3 -c "import shutil;print(shutil.which('ffmpeg') or '')")
           for P in 1.06 1.12; do
             ffmpeg -loglevel error -y -i gb_bm_george.wav -af "asetrate=24000*$P,aresample=24000,atempo=$(python3 -c "print(1/$P)")" "gb_george_pitch_$P.wav"
           done
