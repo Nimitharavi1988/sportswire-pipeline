@@ -13,11 +13,8 @@ jobs:
       - name: Samples
         run: |
           mkdir out && cd out
-          TEXT="MMA news. Islam Makhachev says his next fight could be among his last, and Merab Dvalishvili, Luka Doncic and Victor Wembanyama are all in the news."
-          python3 -m piper.download_voices en_US-ljspeech-medium en_US-libritts_r-medium
-          t() { START=$(date +%s.%N); python3 -m piper -m "$1" $3 -f "$2.wav" -- "$TEXT"; END=$(date +%s.%N); echo "$2: $(echo "$END - $START" | bc) s, $(stat -c %s "$2.wav") bytes"; }
-          t en_US-ljspeech-medium ljspeech ""
-          for S in 10 100 250 400 600; do t en_US-libritts_r-medium libritts_s$S "-s $S"; done
+          python3 -m piper.download_voices en_US-ljspeech-medium
+          python3 -m piper -m en_US-ljspeech-medium -f reel_voice.wav -- "Cricket news. Kuldeep Yadav may miss the INDvNZ XI. Venue, Eden Gardens."
           ls -la
       - uses: actions/upload-artifact@v4
         with: { name: voice-samples, path: out/*.wav }
