@@ -13,6 +13,7 @@ import { promisify } from "node:util";
 import { shortReelCaption } from "./captionVariant";
 import { sportKeywordFor, withSportKeyword } from "./reelKeyword";
 import { applySpeechNames } from "./speechNames";
+import { speakScores } from "./speechScores";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,8 +46,8 @@ export function voiceoverFor(topicKey: string | undefined, articleId: string, en
 
 // Text as it should be spoken: no emoji or symbols, "vs" as "versus", codes spelled out, ending in a full stop. Names are NOT
 // respelled here (see forVoice), so this stays the real spelling.
-export function spokenText(raw: string): string {
-  const cleaned = raw
+export function spokenText(raw: string, category = ""): string {
+  const cleaned = speakScores(raw, category)
     .replace(/\b([A-Z]{2,3})v(?:s)?([A-Z]{2,3})\b/g, (m, a: string, b: string) => (NATION_NAMES[a] && NATION_NAMES[b] ? `${NATION_NAMES[a]} versus ${NATION_NAMES[b]}` : m))
     .replace(/\bXI\b/g, "eleven")
     .replace(/[^\p{L}\p{N}\s.,'’:;!?%&/\-–—]/gu, " ")
@@ -79,7 +80,7 @@ export const forVoice = (spoken: string) => applySpeechNames(spoken);
 export function buildVoiceScript(content: { hook: string }, category: string, description?: string | null): string {
   const lead = spokenLead(category);
   const base = description?.trim() ? shortReelCaption(description, 26) : content.hook;
-  const sentence = spokenText(base);
+  const sentence = spokenText(base, category);
   const needsLead = lead && withSportKeyword(sentence, category) !== sentence;
   return forVoice(needsLead ? `${lead} ${afterOpener(sentence)}` : sentence);
 }
@@ -87,7 +88,7 @@ export function buildVoiceScript(content: { hook: string }, category: string, de
 // The shorter text used when the description will not fit the reel: the sport and the hook.
 export function buildShortScript(content: { hook: string }, category: string): string {
   const lead = spokenLead(category);
-  const hook = spokenText(content.hook);
+  const hook = spokenText(content.hook, category);
   return forVoice(lead ? `${lead} ${afterOpener(hook)}` : hook);
 }
 
