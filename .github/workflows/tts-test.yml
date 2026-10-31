@@ -7,42 +7,32 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install kokoro-onnx soundfile
-      - run: sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg
       - name: Samples
         run: |
           mkdir out && cd out
-          TEXT="Cricket news. Kuldeep Yadav may miss the India versus New Zealand eleven. Venue, Eden Gardens."
           B=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
           curl -sL -o kokoro.onnx "$B/kokoro-v1.0.int8.onnx"; curl -sL -o voices.bin "$B/voices-v1.0.bin"
           cat > k.py <<'PY'
-          import sys, soundfile as sf
+          import json, soundfile as sf
           from kokoro_onnx import Kokoro
-          text = sys.argv[1]
+          t = json.load(open("../.github/data/tts-texts.json"))
           k = Kokoro("kokoro.onnx", "voices.bin")
-          print("voices:", [v for v in k.get_voices() if v.startswith("b") or v.startswith("a")])
-          def make(name, voice, speed=1.0):
-              try:
-                  s, sr = k.create(text, voice=voice, speed=speed, lang="en-gb" if name.startswith("gb") else "en-us")
-                  sf.write(f"{name}.wav", s, sr)
-              except Exception as e:
-                  print("skip", name, e)
-          # soft candidates, slower than before (1.0) so they sound relaxed
-          for v in ["bm_fable", "bm_daniel", "bm_lewis", "bm_george"]:
-              make(f"gb_{v}", v)
-          for v in ["bf_isabella", "bf_lily", "bf_alice", "bf_emma"]:
-              make(f"gb_soft_{v}", v)
-          for v in ["af_nicole", "af_sky", "af_heart"]:
-              make(f"us_soft_{v}", v)
-          for v in ["bm_fable", "bm_daniel", "bf_isabella"]:
-              make(f"gb_blend_george_{v}", k.get_voice_style("bm_george") * 0.5 + k.get_voice_style(v) * 0.5)
+          def make(name, key, voice, speed):
+              s, sr = k.create(t[key], voice=voice, speed=speed, lang="en-gb" if voice.startswith("b") else "en-us")
+              sf.write(f"{name}.wav", s, sr)
+              print(f"{name}: {len(s)/sr:.1f} s")
+          for key in ["names_cricket_india", "names_cricket_world", "names_mma", "names_boxing_football"]:
+              make(f"{key}__bm_george", key, "bm_george", 1.0)
+          for v in ["bm_george", "bm_fable", "bm_lewis", "bm_daniel", "am_michael", "am_adam"]:
+              make(f"story_mma__{v}", "story_mma", v, 1.05)
+          for key in ["story_cricket", "story_football"]:
+              for v in ["bm_george", "am_michael"]:
+                  make(f"{key}__{v}", key, v, 1.05)
           PY
-          python3 k.py "$TEXT"
-          for P in 1.06 1.12; do
-            ffmpeg -loglevel error -y -i gb_bm_george.wav -af "asetrate=24000*$P,aresample=24000,atempo=$(python3 -c "print(1/$P)")" "gb_george_pitch_$P.wav"
-          done
-          ls -la *.wav
+          python3 k.py
       - uses: actions/upload-artifact@v4
         with: { name: voice-samples, path: out/*.wav }
