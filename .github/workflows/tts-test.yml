@@ -16,11 +16,11 @@ jobs:
           mkdir out && cd out
           B=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
           curl -sL -o kokoro.onnx "$B/kokoro-v1.0.int8.onnx"; curl -sL -o voices.bin "$B/voices-v1.0.bin"
-          T1="MMA news. Islaam Mahkahchev has revealed that his upcoming bout will be among the final appearances of his professional fighting career."
-          T2="Jusprit Boomrah took four wickets as India beat New Zealand by 28 runs in the first T20I at Eden Gardens."
-          run() { python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin "$1" "$2" "$3" "$4.wav" "$5" "$6"; python3 -c "import soundfile as sf;d,r=sf.read('$4.wav');print('$4', round(len(d)/r,1),'s')"; }
-          run bm_george en-gb 1.05 final_mma_george 42 "$T1"
-          run am_michael en-us 1.05 final_cricket_michael 43 "$T2"
-          run bm_fable en-gb 1.2 final_mma_fable_fast 44 "$T1"
+          run() { python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin bm_george en-gb 1.05 "$1.wav" 42 "$2"; }
+          run acr_as_written "Sean Brady is out of the UFC main event after the IPL star was named in the BCCI squad."
+          run acr_spaced "Sean Brady is out of the U F C main event after the I P L star was named in the B C C I squad."
+          run acr_words "Sean Brady is out of the You Eff See main event after the Eye Pee El star was named in the Bee See See Eye squad."
+          run acr_dotted "Sean Brady is out of the U.F.C. main event after the I.P.L. star was named in the B.C.C.I. squad."
+          run mma_lead "Mixed martial arts news. Shawn Brady is out of the main event."
       - uses: actions/upload-artifact@v4
         with: { name: voice-samples, path: out/*.wav }
