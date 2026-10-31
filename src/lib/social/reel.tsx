@@ -325,6 +325,8 @@ export async function renderReel(params: {
   opening?: Opening;
   // The score of the match the story is about, shown as a strip above the photo (reelScore.ts).
   score?: ReelScore | null;
+  // A spoken track (voiceover.ts): mixed over the music, which drops under it.
+  voicePath?: string;
 }): Promise<Buffer> {
   const ffmpegPath = (await import("ffmpeg-static")).default as unknown as string | null;
   if (!ffmpegPath) throw new Error("ffmpeg-static has no binary for this platform");
@@ -402,6 +404,7 @@ export async function renderReel(params: {
       ...textPaths.flatMap(still), // 2 .. 1+texts
       ...still(endPath), // 2+texts
       "-i", musicPath,
+      ...(params.voicePath ? ["-i", params.voicePath] : []), // after the music
     ];
     const endInput = 2 + texts.length;
     const audioInput = endInput + 1;
@@ -445,7 +448,14 @@ export async function renderReel(params: {
       last = `v${i + 1}`;
     });
     filters.push(`[${endInput}:v]format=rgba,fade=t=in:st=${f(endStart - OVERLAP)}:d=0.4:alpha=1[end]`);
-    filters.push(`[${audioInput}:a]atrim=0:${f(total)},afade=t=out:st=${f(total - 1.5)}:d=1.5,loudnorm=I=-16:TP=-1.5,aresample=44100[aout]`);
+    if (params.voicePath) {
+      // The voice starts a beat in; the music sits at 30% under it. amix halves each input, hence volume=2 after it.
+      filters.push(`[${audioInput}:a]aformat=channel_layouts=stereo,volume=0.3[mus]`);
+      filters.push(`[${audioInput + 1}:a]aresample=44100,aformat=channel_layouts=stereo,adelay=250|250[vox]`);
+      filters.push(`[mus][vox]amix=inputs=2:duration=first:dropout_transition=0,volume=2,atrim=0:${f(total)},afade=t=out:st=${f(total - 1.5)}:d=1.5,loudnorm=I=-16:TP=-1.5,aresample=44100[aout]`);
+    } else {
+      filters.push(`[${audioInput}:a]atrim=0:${f(total)},afade=t=out:st=${f(total - 1.5)}:d=1.5,loudnorm=I=-16:TP=-1.5,aresample=44100[aout]`);
+    }
     filters.push(`[${last}][end]overlay=0:0:enable='gte(t\\,${f(endStart - OVERLAP)})'[vend]`);
     filters.push(`color=c=${th.accent.replace("#", "0x")}:s=${W}x${PROGRESS_H}:r=${FPS}:d=${f(total)}[bar]`);
     filters.push(`[vend][bar]overlay=x='-w+w*t/${f(total)}':y=0,format=yuv420p,setsar=1[vout]`);

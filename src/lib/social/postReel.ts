@@ -2,6 +2,7 @@ import { categoryEmoji } from "@/lib/categoryDisplay";
 import { socialArticleUrl } from "./trackedLink";
 import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
 import { withSportKeyword } from "./reelKeyword";
+import { buildVoiceScript, synthesizeVoice, voiceoverFor } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -409,12 +410,14 @@ export async function postReel(
   // What this reel was made with, recorded with its outcome by recordAttempt (decisionLog.ts).
   // The reel's opening: half the stories get the fast one, half the classic (the control); recorded in the decision log.
   const opening = openingFor(article.id);
-  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening }));
+  // Voice pilot (voiceover.ts): English reels of the listed topic Pages, half the stories; never the main Page. Silent on any failure.
+  const voicePath = !locale && opts.topicPage && voiceoverFor(opts.topicPage.key, article.id) ? await synthesizeVoice(buildVoiceScript(content, article.category)) : null;
+  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: Boolean(voicePath) }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
   const score = await loadScoreStrip(article.title, locale === "es" ? "es" : "en");
   if (score) console.log(`[reel] score strip: ${score.home} ${score.homeScore} - ${score.awayScore} ${score.away} (${score.label})`);
-  const render = (youtube: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening });
+  const render = (youtube: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: voicePath ?? undefined });
   // Instagram/Facebook share one render; the YouTube Short gets its own end card (Subscribe, link in the description).
   const mp4 = needInstagram || needFacebook ? await render(false) : null;
   if (mp4) console.log(`Rendered ${(mp4.length / 1024 / 1024).toFixed(1)} MB`);
