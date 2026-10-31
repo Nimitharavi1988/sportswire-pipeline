@@ -19,7 +19,7 @@ export interface ReelFeatureInput {
   factRows: number;
   storyType?: string;
   opening?: string;
-  voice?: boolean;
+  voice?: string | null;
   hookMeta?: { style: string; by: string; candidates: unknown[] };
 }
 
@@ -44,7 +44,7 @@ export function reelFeatures(i: ReelFeatureInput): Record<string, unknown> {
     factRows: i.factRows,
     storyType: i.storyType ?? null,
     opening: i.opening ?? null,
-    voice: i.voice ?? false,
+    voice: i.voice ?? null,
     hookStyle: i.hookMeta?.style ?? null,
     hookChosenBy: i.hookMeta?.by ?? null,
     hookCandidates: i.hookMeta?.candidates ?? null,
