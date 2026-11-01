@@ -23,7 +23,7 @@ import { logDecision } from "./decisionLog";
 import { postArticleToInstagram } from "./instagram";
 import { instagramPhotoRoom, topicInstagramPhotoCap } from "./topicInstagramCap";
 import { editionConditions } from "../i18n/overlay";
-import { TOPIC_DESTINATIONS, destinationRunCap, localDayStart, prioritise, type FacebookDestination } from "./facebookDestinations";
+import { TOPIC_DESTINATIONS, destinationRunCap, instagramPaused, localDayStart, prioritise, type FacebookDestination } from "./facebookDestinations";
 
 const POOL_WINDOW_MS = 2 * 24 * 60 * 60 * 1000;
 const SIMILARITY_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -117,7 +117,7 @@ async function postToDestination(d: FacebookDestination, now: Date, dryRun: bool
   console.log(`[facebook:${d.key}] postedToday=${postedToday} runCap=${runCap} toPost=${toPost.length}`);
 
   if (dryRun) return toPost;
-  let instagramOn = Boolean(d.instagramId);
+  let instagramOn = Boolean(d.instagramId) && !instagramPaused(d.key);
   // The Page's Instagram photo posts have a small daily limit (topicInstagramCap.ts); the Facebook posts have none added.
   let instagramRoom = 0;
   if (instagramOn) {

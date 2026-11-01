@@ -328,4 +328,14 @@ export function destinationRunCap(d: Pick<FacebookDestination, "dailyCap" | "per
 // own checks (already posted, daily limit, similar titles: autoApprove.ts,
 // socialPoster.ts) leave these out, so a sport account's posts never block or
 // count against the main account.
+// Topic Instagram accounts switched off by hand (2026-11-01: accounts restricted by Instagram, review pending; Cricket Live's own
+// API access was already refused). INSTAGRAM_PAUSED_ACCOUNTS lists Page keys, e.g. "cricketlive,us". Only Instagram posting stops:
+// the Page's Facebook posts and reels go on. Remove a key to resume. Pure, unit-tested.
+export function instagramPausedKeys(env: Record<string, string | undefined> = process.env): string[] {
+  return (env.INSTAGRAM_PAUSED_ACCOUNTS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+}
+export function instagramPaused(key: string, env: Record<string, string | undefined> = process.env): boolean {
+  return instagramPausedKeys(env).includes(key.toLowerCase());
+}
+
 export const TOPIC_INSTAGRAM_KEYS: string[] = TOPIC_DESTINATIONS.filter((d) => d.instagramId).flatMap((d) => [d.key, `${d.key}-reel`]);

@@ -12,7 +12,7 @@ import { loadScoreStrip } from "./reelScore";
 import { db } from "@/db";
 import { article as articleTable, vertical as verticalTable, socialPost as socialPostTable } from "@/db/schema";
 import { and, count, eq, gte, inArray, like, max, ne } from "drizzle-orm";
-import { TOPIC_DESTINATIONS, SPANISH_PAGE, type FacebookDestination } from "./facebookDestinations";
+import { TOPIC_DESTINATIONS, SPANISH_PAGE, instagramPaused, type FacebookDestination } from "./facebookDestinations";
 import { MAIN_REEL_DESTINATION, reelNeeds } from "./reelDuplicates";
 import { createId } from "@paralleldrive/cuid2";
 import { generatePosterContent, generateSocialCaptions, type SocialCaptions } from "@/lib/ingestion/commentary";
@@ -367,7 +367,10 @@ export async function postReel(
   const whySkipped: string[] = [];
   const igCooling = wantInstagram && (await instagramCoolingDown(opts.topicPage ? `${opts.topicPage.key}-reel` : DESTINATION));
   if (igCooling) whySkipped.push("instagram paused after a platform limit error (metaCooldown.ts)");
-  const needInstagram = wantInstagram && !igCooling;
+  // An account switched off by hand (INSTAGRAM_PAUSED_ACCOUNTS, facebookDestinations.ts): no reel is rendered for it.
+  const igPaused = wantInstagram && Boolean(opts.topicPage && instagramPaused(opts.topicPage.key));
+  if (igPaused) whySkipped.push("instagram account paused by hand (INSTAGRAM_PAUSED_ACCOUNTS)");
+  const needInstagram = wantInstagram && !igCooling && !igPaused;
   // YouTube: the English channel for the main reels, the Spanish channel for the Spanish Page's reels
   // (other topic Pages: none), once per story per channel.
   // The cricket Pages' reels (reels.youtube) go to the English channel too, with the main reels: one Short

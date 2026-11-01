@@ -11,7 +11,7 @@ import { isMatchDataSource } from "../matchDataSources";
 import { hasUsableImage } from "../contentQuality";
 import { isPromotional } from "../thinContent";
 import { isSimilarToAny } from "../titleSimilarity";
-import { TOPIC_DESTINATIONS, destinationRunCap, localDayStart, prioritise } from "./facebookDestinations";
+import { TOPIC_DESTINATIONS, destinationRunCap, instagramPaused, localDayStart, prioritise } from "./facebookDestinations";
 import { postReel } from "./postReel";
 import { breakingSlotFor, findBreaking } from "./breakingNews";
 import { storyPickBoost } from "./drama";
@@ -128,7 +128,7 @@ export async function postTopicReels(now: Date = new Date()): Promise<void> {
         attempts++;
         try {
           // Instagram too only where the Page opts in (reels.instagram) and has an account.
-          const r = await postReel(a.id, { instagram: Boolean(d.reels.instagram && d.instagramId), facebook: true, youtube: Boolean(d.reels.youtube), topicPage: d, fanOut: fanout });
+          const r = await postReel(a.id, { instagram: Boolean(d.reels.instagram && d.instagramId && !instagramPaused(d.key)), facebook: true, youtube: Boolean(d.reels.youtube), topicPage: d, fanOut: fanout });
           console.log(`[reel:${d.key}] ${r.facebookPosted ? "posted" : "not posted"} ${a.id} ("${a.title.slice(0, 60)}")`);
           if (r.facebookPosted) {
             postedNow++;

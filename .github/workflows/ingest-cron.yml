@@ -84,6 +84,7 @@ jobs:
         env:
           VOICEOVER_PAGES: ${{ vars.VOICEOVER_PAGES }}
           FALLBACK_CARD_CATEGORIES: ${{ vars.FALLBACK_CARD_CATEGORIES }}
+          INSTAGRAM_PAUSED_ACCOUNTS: ${{ vars.INSTAGRAM_PAUSED_ACCOUNTS }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SITE_URL: ${{ vars.SITE_URL }}
           INDEXNOW_KEY: ${{ secrets.INDEXNOW_KEY }}
