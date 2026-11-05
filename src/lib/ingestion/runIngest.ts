@@ -50,6 +50,7 @@ import { isExcludedSource } from "../excludedSources";
 import { competitionFromSummary } from "../teamNames";
 import { MATCH_DATA_SOURCE_NAMES, isMatchDataSource, supersedes } from "../matchDataSources";
 import { resolvePrimaryPlayerName } from "../players";
+import { isLicensedImageUrl, licensedImageOrUndefined } from "../imagePolicy";
 
 // Prefers a source-provided stable id (see RawMatchItem.dedupeKey) over the
 // title+date hash, since a title embedding a mutable date (e.g. NFL preview
@@ -240,7 +241,7 @@ async function resolveGrounding(item: RawMatchItem): Promise<Grounding | null> {
     const extracted = await extractArticleContentDetailed(item.sourceUrl);
     if (!("failure" in extracted)) {
       candidates.push(extracted.text);
-      imageUrl = extracted.imageUrl;
+      imageUrl = licensedImageOrUndefined(extracted.imageUrl);
     } else {
       pageProblem = `source page unreadable (${extracted.failure})`;
     }
@@ -264,7 +265,7 @@ async function resolveGroundingLegacy(item: RawMatchItem): Promise<Grounding | n
     // Volleyball Magazine story sat unpublished for exactly this reason).
     if (item.heroImageUrl || isGoogleNewsRedirect(item.sourceUrl)) return { text: snippet };
     const page = await extractArticleContent(item.sourceUrl).catch(() => null);
-    return { text: snippet, imageUrl: page?.imageUrl };
+    return { text: snippet, imageUrl: licensedImageOrUndefined(page?.imageUrl) };
   }
   // A Google News redirect link can never be extracted (see
   // isGoogleNewsRedirect above), so when its own snippet is also under the
@@ -283,7 +284,7 @@ async function resolveGroundingLegacy(item: RawMatchItem): Promise<Grounding | n
     return null;
   }
   const extracted = await extractArticleContentDetailed(item.sourceUrl);
-  if (!("failure" in extracted)) return { text: extracted.text, imageUrl: extracted.imageUrl };
+  if (!("failure" in extracted)) return { text: extracted.text, imageUrl: licensedImageOrUndefined(extracted.imageUrl) };
   groundingFailures.set(item, `source page unreadable (${extracted.failure})${snippet ? "; used short feed summary" : ""}`);
   return snippet ? { text: snippet } : null;
 }
@@ -530,6 +531,13 @@ export async function runIngest() {
   // touch is only changed between awaits, never across one.
   const processItem = async (item: RawMatchItem): Promise<void> => {
     if (INGEST_LIMIT !== undefined && ingested >= INGEST_LIMIT) return;
+
+    // A publisher's photo (RSS media tag) is not ours to show: it may be a Reuters/Getty/AP picture the publisher only licenses for its
+    // own site. Only allowlisted sources pass (imagePolicy.ts); the story then takes the person-photo / stock / card fallback.
+    if (item.heroImageUrl && !isLicensedImageUrl(item.heroImageUrl)) {
+      item.heroImageUrl = undefined;
+      item.heroImageCredit = undefined;
+    }
 
     // A publisher's ad banner is not a photo of the story: drop it so the
     // usual fallbacks (story image lookup, person photo, or no real image,

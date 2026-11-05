@@ -135,6 +135,9 @@ export const article = pgTable("Article", {
   // Created in production 2026-10-21 with CREATE INDEX CONCURRENTLY; they serve the list queries (latest / per category).
   index("Article_status_publishedAt_idx").on(t.status, t.publishedAt.desc()),
   index("Article_category_publishedAt_idx").on(t.category, t.publishedAt.desc()),
+  // Recent-news lookups (e.g. the scoreboard's headline-derived cricket cards) scanned every
+  // published row without it. Create in production with CREATE INDEX CONCURRENTLY.
+  index("Article_createdAt_idx").on(t.createdAt.desc()),
 ]);
 
 // Per-language copy of a published article (Spanish site, see PLAN.md). Created

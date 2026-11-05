@@ -75,11 +75,21 @@ export function publishProblems(s: StoryInput, categories: string[]): string[] {
   if (s.body.trim().length < STORY_LIMITS.body.min) {
     problems.push(`The story needs at least ${STORY_LIMITS.body.min} characters (about 150 words).`);
   }
+  if (isShoutingHeadline(title)) problems.push("Write the headline in normal case, without all capitals or exclamation marks.");
   if (!categories.includes(s.category)) problems.push("Choose a sport.");
   if (!s.heroImageUrl) problems.push("Add a photo.");
   // Notes left for the writer (e.g. by the AI draft: "[ADD: pitch report]").
   if (/\[(ADD|CHECK)\b/i.test(`${s.title} ${s.summary} ${s.body}`)) problems.push("Replace the [ADD: …] notes with real details first.");
   return problems;
+}
+
+// A tabloid-style headline: mostly capital letters ("RONALDO LEFT OUT!"),
+// or more than one "!". Acronyms like NFL or CR7 in a normal headline
+// stay well under the threshold.
+export function isShoutingHeadline(title: string): boolean {
+  const letters = title.replace(/[^A-Za-z]/g, "");
+  const upper = letters.replace(/[^A-Z]/g, "").length;
+  return (letters.length >= 10 && upper / letters.length > 0.6) || (title.match(/!/g) ?? []).length > 1;
 }
 
 export function wordCount(text: string): number {

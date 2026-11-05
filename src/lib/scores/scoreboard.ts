@@ -10,6 +10,7 @@ import { and, asc, desc, eq, gt, gte, ilike, inArray, isNotNull, like, lte, ne, 
 import { MATCH_DATA_SOURCE_NAMES } from "../matchDataSources";
 import { findNewsBasedCricketMatches } from "../liveCricket";
 import { byPriority } from "./priority";
+import { edgeCached } from "../edgeCache";
 import { dayWindow, type MatchQuery } from "./matchQuery";
 import { CRICKET_STALE_MS, toScoreMatch, type MatchRow, type ScoreMatch } from "./scoreboardModel";
 
@@ -77,6 +78,15 @@ export function currentScoreMatch(row: MatchRow): ScoreMatch | null {
 // liveUpdates.ts). Ids that aren't match rows simply don't come back.
 export async function fetchScoreMatchesByIds(ids: string[]): Promise<ScoreMatch[]> {
   if (ids.length === 0) return [];
+  // Every open page polls this (LIVE_POLL_MS); visitors on the same page share one query per TTL.
+  const sorted = [...new Set(ids)].sort();
+  return edgeCached(`score-ids:${sorted.join(",")}`, LIVE_CACHE_TTL_S, () => fetchScoreMatchesByIdsUncached(sorted));
+}
+
+// Live data itself refreshes every 2 min (live-scores Worker), so 20 s adds little staleness.
+const LIVE_CACHE_TTL_S = 20;
+
+async function fetchScoreMatchesByIdsUncached(ids: string[]): Promise<ScoreMatch[]> {
   const now = new Date();
   const rows = await db
     .select(MATCH_COLUMNS)
@@ -91,7 +101,12 @@ export async function fetchScoreMatchesByIds(ids: string[]): Promise<ScoreMatch[
 // Games kicking off within `windowMs` either side of now, plus any cricket match still
 // being updated right now even if it started earlier (a Test runs for days).
 // `sport` is a top-level category ("football" also covers "football/...").
+// /scores is rendered per request (sport tabs), so it shares the live cache too.
 export async function fetchScoreboard(opts: { windowMs: number; sport?: string }): Promise<ScoreMatch[]> {
+  return edgeCached(`scoreboard:${opts.windowMs}:${opts.sport ?? ""}`, LIVE_CACHE_TTL_S, () => fetchScoreboardUncached(opts));
+}
+
+async function fetchScoreboardUncached(opts: { windowMs: number; sport?: string }): Promise<ScoreMatch[]> {
   const now = new Date();
   const from = new Date(now.getTime() - opts.windowMs);
   const to = new Date(now.getTime() + opts.windowMs);
@@ -182,12 +197,21 @@ const LIVE_NOW_WINDOW_MS = 4 * 24 * 60 * 60 * 1000;
 // Homepage panel and the site-wide score strip: most important first
 // (priority.ts — live games and big competitions lead, then games starting
 // soon, then recent results), same cards and rules as /scores.
+// The ticker on every page polls this and the homepage renders it, so the full list is computed
+// once per sport per TTL and sliced per caller, instead of once per visitor.
 export async function fetchLiveNow(opts: { take: number; sport?: string }): Promise<ScoreMatch[]> {
-  const matches = await fetchScoreboard({ windowMs: LIVE_NOW_WINDOW_MS, sport: opts.sport });
+  const all = await edgeCached(`live-now:${opts.sport ?? ""}`, LIVE_CACHE_TTL_S, () => fetchLiveNowUncached(opts.sport));
+  return all.slice(0, opts.take);
+}
+
+const LIVE_NOW_MAX = 30;
+
+async function fetchLiveNowUncached(sport?: string): Promise<ScoreMatch[]> {
+  const matches = await fetchScoreboardUncached({ windowMs: LIVE_NOW_WINDOW_MS, sport });
   // Headline-only live cards (no score feed for that match) trail the rest.
   const detail = (m: ScoreMatch) => (m.state === "live" && m.home.score === null && !m.clock ? 1 : 0);
   const rank = byPriority(Date.now());
-  return matches.sort((a, b) => detail(a) - detail(b) || rank(a, b)).slice(0, opts.take);
+  return matches.sort((a, b) => detail(a) - detail(b) || rank(a, b)).slice(0, LIVE_NOW_MAX);
 }
 
 // Matches at one ground (lib/venues.ts matchTerms against Article.venue,
