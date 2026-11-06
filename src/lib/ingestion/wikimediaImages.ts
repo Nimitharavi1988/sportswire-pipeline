@@ -175,7 +175,7 @@ async function resolvePersonTitle(personName: string, sportHint?: string): Promi
 // photo of the person — club crests, national flags, UI icons, locator
 // maps, signatures — filtered out by filename before spending a license
 // check on them.
-const NON_PHOTO_FILENAME_PATTERN = /logo|icon|flag|crest|badge|shield|locator|_map|sportsbox|commons-logo|edit-|ambox|padlock|question_book|symbol|wiki-|signature|graph|chart|diagram|plot|statistic|timeline|career_|_stats|record_/i;
+const NON_PHOTO_FILENAME_PATTERN = /logo|icon|flag|crest|badge|shield|locator|_map|sportsbox|commons-logo|edit-|ambox|padlock|question_book|symbol|wiki-|signature|graph|chart|diagram|plot|statistic|timeline|career_|_stats|record_|mugshot|mug_shot|booking|arrest|police|crash|accident|funeral|protest/i;
 
 function simpleHash(input: string): number {
   let hash = 0;
