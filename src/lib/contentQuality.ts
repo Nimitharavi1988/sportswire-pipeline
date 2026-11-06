@@ -1,4 +1,5 @@
 import { isMatchDataSource } from "./matchDataSources";
+import { isLicensedImageUrl } from "./imagePolicy";
 
 // Images that must never publish: publisher placeholders that look like a
 // real photo but aren't one for the story. Exact URLs go in BLOCKED_IMAGE_URLS
@@ -60,6 +61,9 @@ export function hasRealImage(article: { heroImageUrl: string | null; homeCrestUr
   // A real photo — from the publisher's own RSS feed, a real player photo,
   // or a real match photo — as opposed to the generic category stock-photo
   // fallback (always served from Pexels; see stockImages.ts).
+  // A picture from any source we have no licence for (a news publisher, a wire agency) is never a usable image: the story
+  // is not approved, shown in a main section, or posted with it. Allowed: our own files, Wikimedia, Pexels (imagePolicy.ts).
+  if (article.heroImageUrl && !isLicensedImageUrl(article.heroImageUrl)) return false;
   if (article.heroImageUrl && !article.heroImageUrl.includes("pexels.com")) {
     // Confirmed live 2026-09-20: ESPN Cricinfo's RSS feed occasionally
     // supplies a media:content url that's just the bare domain
