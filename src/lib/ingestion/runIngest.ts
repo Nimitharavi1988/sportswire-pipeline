@@ -1,7 +1,7 @@
 import { isPromoBannerImage } from "./promoImages";
 import { db } from "@/db";
 import { article, vertical } from "@/db/schema";
-import { and, count, eq, gte, inArray, isNotNull, ne, notInArray } from "drizzle-orm";
+import { and, count, eq, gte, ilike, inArray, isNotNull, ne, notInArray } from "drizzle-orm";
 import { commentaryRunBudget, dailyCommentaryCapFrom, scaledReserve } from "./commentaryBudget";
 import { runPool } from "./pool";
 import { bestSource, minGroundingChars } from "./groundingRules";
@@ -45,7 +45,7 @@ const generateCommentary = (...args: Parameters<typeof generateCommentaryUntimed
 const generateMatchRecap = (...args: Parameters<typeof generateMatchRecapUntimed>) => timed("generateMatchRecap (Gemini)", () => generateMatchRecapUntimed(...args));
 const verifyCommentaryHasSubstance = (...args: Parameters<typeof verifyCommentaryHasSubstanceUntimed>) => timed("verifyCommentaryHasSubstance (Gemini)", () => verifyCommentaryHasSubstanceUntimed(...args));
 import { extractArticleContent, extractArticleContentDetailed } from "./articleTextExtractor";
-import { fetchPersonPhoto, sportSearchHint } from "./wikimediaImages";
+import { commonsFileKey, fetchPersonPhoto, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
 import { isExcludedSource } from "../excludedSources";
 import { competitionFromSummary } from "../teamNames";
 import { MATCH_DATA_SOURCE_NAMES, isMatchDataSource, supersedes } from "../matchDataSources";
@@ -294,7 +294,28 @@ async function resolveGroundingLegacy(item: RawMatchItem): Promise<Grounding | n
 // already-seen duplicates. Unset (the normal cron path) means no limit.
 const INGEST_LIMIT = process.env.INGEST_LIMIT ? parseInt(process.env.INGEST_LIMIT, 10) : undefined;
 
+// How often each Wikimedia photo was used as a story photo in the last 7 days
+// (by file, any width), so fetchPersonPhoto can cap repeats. A failure only
+// means no cap this run.
+async function loadRecentPhotoUsage(): Promise<Map<string, number>> {
+  const usage = new Map<string, number>();
+  try {
+    const rows = await db
+      .select({ url: article.heroImageUrl })
+      .from(article)
+      .where(and(gte(article.createdAt, new Date(Date.now() - 7 * 24 * 3600 * 1000)), ilike(article.heroImageUrl, "%wikimedia.org%")));
+    for (const r of rows) {
+      const key = r.url ? commonsFileKey(r.url) : null;
+      if (key) usage.set(key, (usage.get(key) ?? 0) + 1);
+    }
+  } catch (err) {
+    console.error("Photo usage lookup failed (no repeat cap this run):", err);
+  }
+  return usage;
+}
+
 export async function runIngest() {
+  setPhotoUsage(await loadRecentPhotoUsage());
   let [verticalRow] = await db.select().from(vertical).where(eq(vertical.name, "sports")).limit(1);
   if (!verticalRow) {
     [verticalRow] = await db.insert(vertical).values({ id: createId(), name: "sports" }).returning();

@@ -175,7 +175,7 @@ async function resolvePersonTitle(personName: string, sportHint?: string): Promi
 // photo of the person — club crests, national flags, UI icons, locator
 // maps, signatures — filtered out by filename before spending a license
 // check on them.
-const NON_PHOTO_FILENAME_PATTERN = /logo|icon|flag|crest|badge|shield|locator|_map|sportsbox|commons-logo|edit-|ambox|padlock|question_book|symbol|wiki-|signature/i;
+const NON_PHOTO_FILENAME_PATTERN = /logo|icon|flag|crest|badge|shield|locator|_map|sportsbox|commons-logo|edit-|ambox|padlock|question_book|symbol|wiki-|signature|graph|chart|diagram|plot|statistic|timeline|career_|_stats|record_/i;
 
 function simpleHash(input: string): number {
   let hash = 0;
@@ -183,53 +183,174 @@ function simpleHash(input: string): number {
   return Math.abs(hash);
 }
 
-// Every article about the same person used to get the exact same lead photo
-// (the Wikipedia infobox image, from the pageimages call below) — confirmed
-// live: repeated Haaland stories in "More headlines" all showing one
-// identical picture. Pulls every real photo referenced anywhere on the
-// person's Wikipedia page instead of just the lead image, so different
-// articles about the same person can get different (but still real, still
-// licensed) photos. Capped at 8 filename candidates and a single batched
-// Commons imageinfo call, so this stays cheap despite checking several
-// files instead of one.
-async function fetchPersonPhotoVariants(title: string): Promise<StockImage[]> {
-  const imagesUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(
-    title
-  )}&prop=images&imlimit=50&format=json`;
-  const imagesData = await wikiFetch(imagesUrl);
-  const page: any = imagesData?.query?.pages ? Object.values(imagesData.query.pages)[0] : null;
-  const fileTitles: string[] = (page?.images ?? [])
-    .map((i: any) => i.title as string)
-    .filter((t: string) => /\.(jpe?g|png)$/i.test(t) && !NON_PHOTO_FILENAME_PATTERN.test(t))
-    .slice(0, 8);
-  if (fileTitles.length === 0) return [];
+// ---- Story photo choice (2026-11-06, audit/image-plan.md phase 1) ----
+// Story photos used to be a random pick (hash of the slug) from the first 8
+// images on the person's Wikipedia page. Found live: a Joe Burrow story got
+// a generic "Cincinnati Bengals" photo, players appeared in 2016-2019 photos
+// or a former team's kit, and one photo showed twice on the homepage. Now
+// every candidate must name the person, candidates are ranked (recent,
+// landscape, large), a photo is used at most PHOTO_REUSE_LIMIT times in the
+// usage window, and the stored copy is STORY_PHOTO_WIDTH wide (was 300px,
+// stretched to ~600px on the homepage).
 
-  // One batched call for url + license + size on every candidate, instead
-  // of one call per file.
+// Wikimedia renders only standard thumbnail widths (960, 1280, 1920 work;
+// 1600 answers 400 — checked 2026-09-27).
+export const STORY_PHOTO_WIDTH = 1280;
+// Narrower originals look soft as a story's main photo.
+export const MIN_STORY_PHOTO_WIDTH = 640;
+export const PHOTO_REUSE_LIMIT = 2;
+
+export interface PhotoCandidate {
+  fileName: string;
+  url: string;
+  credit: string;
+  creditUrl: string;
+  width: number;
+  height: number;
+  year: number | null;
+  isLead: boolean;
+  // The surname is in the file name itself (not only the description).
+  nameInFile?: boolean;
+  // The file name or title suggests several people (team photo, ceremony).
+  group?: boolean;
+}
+
+// File names/titles of group photos: "Burrow_and_Bernard.jpg",
+// "LSU_Football_at_the_White_House.jpg" (both picked for a Joe Burrow story in
+// the first live test, 2026-11-06). Pure.
+const GROUP_PHOTO_PATTERN = /\b(and|with|team|squad|teammates|white house|ceremony|parade|group|celebrat\w*|reception|visit)\b/i;
+export function looksLikeGroupPhoto(fileNameAndTitle: string): boolean {
+  return GROUP_PHOTO_PATTERN.test(fileNameAndTitle.replace(/_+/g, " "));
+}
+
+// A Commons file's identity from any of its URLs (original or any thumbnail
+// width), so the same photo at 330px and 1280px counts as one. Pure.
+export function commonsFileKey(url: string): string | null {
+  const path = url.split("?")[0];
+  const thumb = path.match(/\/thumb\/[0-9a-f]\/[0-9a-f]{2}\/([^/]+)\//i);
+  const raw = thumb ? thumb[1] : /wikimedia\.org\//i.test(path) ? path.split("/").pop() ?? "" : "";
+  if (!raw) return null;
+  let name = raw.replace(/^\d+px-/, "");
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    // keep as is
+  }
+  return name.replace(/ /g, "_").toLowerCase();
+}
+
+// The year a photo was taken: the camera date first, then a year in the file
+// name ("Caleb_Williams_2025.jpg"). Pure.
+export function photoYear(dateTimeOriginal: string | undefined, fileName: string): number | null {
+  const now = new Date().getUTCFullYear();
+  for (const text of [stripHtml(dateTimeOriginal ?? ""), fileName]) {
+    const years = (text.match(/(?:19|20)\d{2}/g) ?? []).map(Number).filter((y) => y >= 1950 && y <= now);
+    if (years.length) return Math.max(...years);
+  }
+  return null;
+}
+
+// Whether the file is about the person: their surname (last name token) in the
+// file name or description. Candidates come from the person's own Wikipedia
+// page, so the surname is enough; a team or stadium photo on that page
+// ("Cincinnati_Bengals_(51155388038).jpg") names no one and is dropped. The
+// lead image is Wikipedia's own choice for the person and is always kept. Pure.
+export function namesPerson(personName: string, fileName: string, description: string): boolean {
+  const tokens = normalizeTokens(personName);
+  const surname = tokens[tokens.length - 1];
+  if (!surname) return false;
+  const words = new Set(normalizeTokens(`${fileName.replace(/\.[a-z]+$/i, "")} ${stripHtml(description)}`));
+  return words.has(surname);
+}
+
+// Higher is better. Recent beats old (kit and team change), landscape beats
+// portrait (story photos are shown wide), large beats small. Pure.
+export function scorePhoto(c: Pick<PhotoCandidate, "width" | "height" | "year" | "isLead" | "nameInFile" | "group">, nowYear = new Date().getUTCFullYear()): number {
+  let score = 0;
+  if (c.nameInFile) score += 2;
+  if (c.group) score -= 4;
+  if (c.year !== null) {
+    const age = nowYear - c.year;
+    score += age <= 3 ? 3 : age <= 6 ? 1 : -2;
+  }
+  if (c.width > c.height) score += 2;
+  if (c.width >= 960) score += 1;
+  if (c.isLead) score += 1;
+  return score;
+}
+
+// Photo usage over the recent window, by commonsFileKey — loaded once per
+// ingest run (runIngest) and updated as photos are picked, so the cap also
+// holds within a run. Empty (no cap) outside ingestion.
+let photoUsage = new Map<string, number>();
+export function setPhotoUsage(usage: Map<string, number>): void {
+  photoUsage = usage;
+}
+function notePhotoUse(url: string): void {
+  const key = commonsFileKey(url);
+  if (key) photoUsage.set(key, (photoUsage.get(key) ?? 0) + 1);
+}
+
+// The best candidates for a story, then a seeded pick among the top few for
+// variety; anything already used PHOTO_REUSE_LIMIT times is skipped (if every
+// candidate is, the least used one is taken rather than none). Pure.
+export function choosePhoto(candidates: PhotoCandidate[], seed: string, usage: Map<string, number>): PhotoCandidate | null {
+  if (candidates.length === 0) return null;
+  const uses = (c: PhotoCandidate) => usage.get(c.fileName.replace(/ /g, "_").toLowerCase()) ?? 0;
+  const fresh = candidates.filter((c) => uses(c) < PHOTO_REUSE_LIMIT);
+  const pool = fresh.length ? fresh : [...candidates].sort((a, b) => uses(a) - uses(b)).slice(0, 1);
+  const ranked = [...pool].sort((a, b) => scorePhoto(b) - scorePhoto(a));
+  const best = scorePhoto(ranked[0]);
+  const top = ranked.filter((c) => scorePhoto(c) >= best - 1).slice(0, 3);
+  return top[simpleHash(seed) % top.length];
+}
+
+// Lead image + every photo on the person's Wikipedia page that names them,
+// licence-checked, at STORY_PHOTO_WIDTH. Two Wikipedia calls + one batched
+// Commons call.
+async function fetchPersonPhotoCandidates(title: string, personName: string): Promise<PhotoCandidate[]> {
+  const pageUrl = `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(
+    title
+  )}&prop=pageimages|images&piprop=name&imlimit=50&format=json`;
+  const pageData = await wikiFetch(pageUrl);
+  const page: any = pageData?.query?.pages ? Object.values(pageData.query.pages)[0] : null;
+  const leadName: string | undefined = page?.pageimage ? String(page.pageimage).replace(/_/g, " ") : undefined;
+  const others: string[] = (page?.images ?? [])
+    .map((i: any) => String(i.title).replace(/^File:/, ""))
+    .filter((t: string) => /\.(jpe?g|png)$/i.test(t) && !NON_PHOTO_FILENAME_PATTERN.test(t) && t !== leadName);
+  const fileNames = [...(leadName ? [leadName] : []), ...others].slice(0, 20);
+  if (fileNames.length === 0) return [];
+
   const infoUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(
-    fileTitles.join("|")
-  )}&prop=imageinfo&iiprop=url|extmetadata|size&iiurlwidth=300&format=json`;
+    fileNames.map((f) => "File:" + f).join("|")
+  )}&prop=imageinfo&iiprop=url|extmetadata|size&iiurlwidth=${STORY_PHOTO_WIDTH}&format=json`;
   const infoData = await wikiFetch(infoUrl);
   const pages: any[] = infoData?.query?.pages ? Object.values(infoData.query.pages) : [];
 
-  const variants: StockImage[] = [];
+  const candidates: PhotoCandidate[] = [];
   for (const p of pages) {
     const info = p?.imageinfo?.[0];
     const meta = info?.extmetadata;
-    // Skip anything too small to be a genuinely good hero-quality photo
-    // (raised from 200 — confirmed live that a 200px-floor candidate from
-    // this less-curated pool can still be an awkward crop, e.g. a wide
-    // action shot with a second, unrelated person's face cut off at the
-    // frame edge; a higher floor filters out more of the smaller,
-    // more-likely-cropped-from-something-wider candidates, though it can't
-    // catch every bad crop on resolution alone).
-    if (!info || !meta || (info.width && info.width < 400)) continue;
-    const fileName: string = String(p.title ?? "").replace(/^File:/, "");
+    if (!info || !meta || !info.width || info.width < MIN_STORY_PHOTO_WIDTH) continue;
+    const fileName = String(p.title ?? "").replace(/^File:/, "");
+    const isLead = !!leadName && fileName === leadName;
+    const description = `${meta.ObjectName?.value ?? ""} ${meta.ImageDescription?.value ?? ""}`;
+    if (!isLead && !namesPerson(personName, fileName, description)) continue;
     const licensed = buildCredit(meta, fileName, "Photo");
     if (!licensed) continue;
-    variants.push({ url: info.thumburl ?? info.url, ...licensed });
+    candidates.push({
+      fileName,
+      url: info.thumburl ?? info.url,
+      ...licensed,
+      width: info.width,
+      height: info.height ?? 0,
+      year: photoYear(meta.DateTimeOriginal?.value, fileName),
+      isLead,
+      nameInFile: namesPerson(personName, fileName, ""),
+      group: looksLikeGroupPhoto(`${fileName} ${stripHtml(meta.ObjectName?.value ?? "")}`),
+    });
   }
-  return variants;
+  return candidates;
 }
 
 async function fetchCanonicalPersonPhoto(title: string): Promise<StockImage | null> {
@@ -299,12 +420,11 @@ async function fetchPersonPhotoUncached(personName: string, sportHint?: string, 
     if (!title) return null;
 
     if (seed) {
-      const [canonical, variants] = await Promise.all([
-        fetchCanonicalPersonPhoto(title),
-        fetchPersonPhotoVariants(title),
-      ]);
-      const pool = canonical ? [canonical, ...variants] : variants;
-      if (pool.length > 0) return pool[simpleHash(seed) % pool.length];
+      const picked = choosePhoto(await fetchPersonPhotoCandidates(title, personName), seed, photoUsage);
+      if (picked) {
+        notePhotoUse(picked.url);
+        return { url: picked.url, credit: picked.credit, creditUrl: picked.creditUrl };
+      }
     }
 
     // 2. No seed, or the seeded pool came back empty — fall back to
