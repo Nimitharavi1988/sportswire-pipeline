@@ -22,7 +22,7 @@ import { logDecision } from "./decisionLog";
 import { spanishShortScore, shortFreshEnough } from "./spanishShortsRank";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
 import { isStarStory, reelIsFresh, reelMaxAgeHours } from "./freshness";
-import { youtubeConfigured, youtubeSlotOpen, maxShortsPerDay, minGapMinutes } from "./youtube";
+import { youtubeConfigured, youtubeSlotOpen, maxShortsPerDayFor, minGapMinutes } from "./youtube";
 
 const DESTINATION = `${SPANISH_PAGE.key}-reel`;
 // Stories this old are only looked at for Messi/Ronaldo (the age limit exempts them); everyone else is bound by the Page's reel age limit.
@@ -34,11 +34,11 @@ const MAX_ATTEMPTS = 2;
 export async function postSpanishShorts(now: Date = new Date()): Promise<void> {
   if (!spanishPageEnabled() || !youtubeConfigured("es")) return;
   try {
-    // Pacing: the same cap and gap as the other Shorts, counted on the Spanish channel only.
+    // Pacing: the Spanish channel's own daily cap (youtube.ts maxShortsPerDayFor) and the usual gap, counted on the Spanish channel only.
     const recent = await db.select({ at: socialPost.postedAt }).from(socialPost)
       .where(and(eq(socialPost.platform, "youtube"), eq(socialPost.destination, DESTINATION), eq(socialPost.status, "posted"), gte(socialPost.postedAt, new Date(now.getTime() - 24 * 3600_000))))
       .orderBy(desc(socialPost.postedAt));
-    if (!youtubeSlotOpen(recent.length, recent[0]?.at ?? null, now, maxShortsPerDay(), minGapMinutes())) {
+    if (!youtubeSlotOpen(recent.length, recent[0]?.at ?? null, now, maxShortsPerDayFor("es"), minGapMinutes())) {
       console.log(`[spanish-shorts] skipped: ${recent.length} in 24h, last ${recent[0]?.at?.toISOString() ?? "never"}`);
       await logDecision({ platform: "youtube", destination: DESTINATION, kind: "short", outcome: "skipped", reason: `pacing: ${recent.length} Shorts in 24h, last ${recent[0]?.at?.toISOString() ?? "never"}` });
       return;

@@ -7,9 +7,12 @@
 
 // Pacing, not a YouTube limit (uploads cost ~100 units and have their own quota bucket since 2026-06):
 // spread the day's Shorts out so each gets its own test audience instead of five landing in one hour.
-// Tunable with YOUTUBE_MAX_PER_DAY / YOUTUBE_MIN_GAP_MINUTES (GitHub repository variables).
+// Tunable with YOUTUBE_MAX_PER_DAY / YOUTUBE_MAX_PER_DAY_ES (Spanish) / YOUTUBE_MIN_GAP_MINUTES (GitHub repository variables).
 const envNum = (name: string, fallback: number) => { const n = Number(process.env[name]); return Number.isFinite(n) && n > 0 ? n : fallback; };
 export const maxShortsPerDay = () => envNum("YOUTUBE_MAX_PER_DAY", 8);
+// The Spanish channel has its own, lower cap (2026-11-07): its Shorts get far fewer views (median 21 against 68) and YouTube stopped it after about
+// 10 uploads in a day. YOUTUBE_MAX_PER_DAY_ES overrides the 10; it never goes above the general cap. The English channel keeps the general one.
+export const maxShortsPerDayFor = (channel: "en" | "es") => (channel === "es" ? Math.min(envNum("YOUTUBE_MAX_PER_DAY_ES", 10), maxShortsPerDay()) : maxShortsPerDay());
 export const minGapMinutes = () => envNum("YOUTUBE_MIN_GAP_MINUTES", 120);
 
 // YouTube caps how many videos a channel may upload per day (a new channel's cap is low and not published:
