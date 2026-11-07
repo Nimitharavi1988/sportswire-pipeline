@@ -3,6 +3,12 @@
 // meaningful image alt text for team crests, since team names aren't stored
 // as separate fields. Falls back to generic labels if the pattern doesn't
 // match rather than guessing wrong.
+// The two team names from the same summary shape (or empty strings), for our own badge when a provider logo is not shown.
+export function crestTeamNames(summary: string): { home: string; away: string } {
+  const match = summary.match(/^(.+?)s+(?:played|face)s+(.+?)s+in the/);
+  return match ? { home: match[1], away: match[2] } : { home: "", away: "" };
+}
+
 export function crestAltText(summary: string): { home: string; away: string } {
   const match = summary.match(/^(.+?)\s+(?:played|face)\s+(.+?)\s+in the/);
   if (match) {

@@ -17,6 +17,8 @@ import { MAIN_REEL_DESTINATION, reelNeeds } from "./reelDuplicates";
 import { createId } from "@paralleldrive/cuid2";
 import { generatePosterContent, generateSocialCaptions, type SocialCaptions } from "@/lib/ingestion/commentary";
 import { renderReel } from "./reel";
+import { planReels, reelSwitches } from "./reelPlan";
+import { isFallbackCard } from "../fallbackCards";
 import { musicStyleFor, type ReelMusicStyle } from "./reelMusic";
 import { reelThemeFor, type ReelTheme, type ReelFont } from "./reelThemes";
 import { resolvePageAccessToken, translationFor } from "./facebook";
@@ -443,16 +445,23 @@ export async function postReel(
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
   const score = await loadScoreStrip(article.title, locale === "es" ? "es" : "en");
   if (score) console.log(`[reel] score strip: ${score.home} ${score.homeScore} - ${score.awayScore} ${score.away} (${score.label})`);
-  const render = (youtube: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: voicePath ?? undefined });
-  // Instagram/Facebook share one render; the YouTube Short gets its own end card (Subscribe, link in the description).
-  const mp4 = needInstagram || needFacebook ? await render(false) : null;
-  if (mp4) console.log(`Rendered ${(mp4.length / 1024 / 1024).toFixed(1)} MB`);
+  // Which version each destination gets (reelPlan.ts): no photo of its own -> the graphic reel everywhere; a photo -> the photo reel, with
+  // the animated hook on Instagram, the topic Pages and YouTube (the main Page keeps the classic one).
+  const plan = planReels({ noPhoto: isFallbackCard(article.heroImageUrl), isTopicPage: Boolean(opts.topicPage), needInstagram, needFacebook, needYouTube, ...reelSwitches(process.env) });
+  if (plan.graphic) console.log("[reel] no photo of its own: graphic reel (drawn art, animated hook)");
+  const render = (youtube: boolean, motionHook: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: voicePath ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook });
+  // Instagram/Facebook share one render per version (motion hook or classic); the YouTube Short gets its own end card (Subscribe, link in the description).
+  const mp4Motion = plan.renderMotion ? await render(false, true) : null;
+  const mp4Classic = plan.renderClassic ? await render(false, false) : null;
+  for (const m of [mp4Motion, mp4Classic]) if (m) console.log(`Rendered ${(m.length / 1024 / 1024).toFixed(1)} MB`);
+  const mp4Instagram = plan.instagramMotion ? mp4Motion : mp4Classic;
+  const mp4Facebook = plan.facebookMotion ? mp4Motion : mp4Classic;
 
   const siteUrl = locale ? `https://${LOCALES[locale].host}` : process.env.SITE_URL ?? "https://sportswirelive.com";
   const articleUrl = socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "facebook", reelVariant, opts.topicPage?.key);
-  const instagramPosted = needInstagram && mp4 ? await postReelToInstagram(article, mp4, captions, opts.topicPage) : false;
-  const facebookPosted = needFacebook && mp4 ? await postReelToFacebook(article, mp4, captions, articleUrl, opts.topicPage, captionVariantFor(articleId) === "hook" && !opts.topicPage?.reelCaptionTest) : false;
+  const instagramPosted = needInstagram && mp4Instagram ? await postReelToInstagram(article, mp4Instagram, captions, opts.topicPage) : false;
+  const facebookPosted = needFacebook && mp4Facebook ? await postReelToFacebook(article, mp4Facebook, captions, articleUrl, opts.topicPage, captionVariantFor(articleId) === "hook" && !opts.topicPage?.reelCaptionTest) : false;
   // Never lets a YouTube problem (e.g. the row insert) undo the Instagram/Facebook posts above.
-  const youtubePosted = needYouTube ? await render(true).then((yt) => postReelToYouTube(article, yt, captions, socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "youtube"), content.hook, textTitle, opts.topicPage)).catch((err) => { console.error("[youtube short] failed:", err); return false; }) : false;
+  const youtubePosted = needYouTube ? await render(true, plan.youtubeMotion).then((yt) => postReelToYouTube(article, yt, captions, socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "youtube"), content.hook, textTitle, opts.topicPage)).catch((err) => { console.error("[youtube short] failed:", err); return false; }) : false;
   return { instagramPosted, facebookPosted, youtubePosted };
 }

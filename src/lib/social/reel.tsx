@@ -11,6 +11,8 @@ import { loadHeroImageDataUri, BRAND_GREEN } from "./instagramPoster";
 import { generateReelMusic, type ReelMusicStyle } from "./reelMusic";
 import { REEL_THEMES, DEFAULT_REEL_THEME, REEL_FONTS, DEFAULT_REEL_FONT, type ReelTheme, type ReelFont } from "./reelThemes";
 import { categoryLabelEs } from "../i18n/es";
+import { heroBackgroundJpeg } from "./heroGraphic";
+import { keyWordIndex, WORD_GAP, WORD_START } from "./hookMotion";
 
 const execFileAsync = promisify(execFile);
 
@@ -192,6 +194,33 @@ function HookText({ th, content, sportLabel, scale = 1 }: { th: Theme; content: 
   );
 }
 
+// The animated hook's layers (graphic reels): only === -1 is the label, eyebrow and bar; only === k is word k alone, in the headline's own
+// position (the other words are transparent, so the layout never shifts). Stacked, they build the headline word by word.
+function HookWordsLayer({ th, content, sportLabel, words, key_, only, scale }: { th: Theme; content: PosterContent; sportLabel: string | null; words: string[]; key_: number; only: number; scale: number }) {
+  const size = Math.round(hookSize(content.hook) * scale);
+  return (
+    <Layer>
+      <div style={{ display: "flex", flex: 1 }} />
+      <div style={{ display: "flex", flexDirection: "column", padding: "0 60px 420px 60px" }}>
+        <div style={{ display: "flex", alignItems: "center", marginBottom: 24, opacity: only === -1 ? 1 : 0 }}>
+          {sportLabel && (
+            <div style={{ display: "flex", padding: "8px 18px", borderRadius: 8, background: th.accent, color: "white", fontSize: 30, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginRight: 18 }}>
+              {sportLabel}
+            </div>
+          )}
+          <div style={{ display: "flex", color: "rgba(255,255,255,0.9)", fontSize: 30, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{content.eyebrow}</div>
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", lineHeight: 1.1 }}>
+          {words.map((w, i) => (
+            <div key={i} style={{ display: "flex", marginRight: Math.round(size * 0.26), opacity: only === i ? 1 : 0, color: i === key_ ? th.accent : "white", ...th.head(size) }}>{w}</div>
+          ))}
+        </div>
+        <div style={{ display: "flex", width: 140, height: 10, borderRadius: 5, background: th.accent, marginTop: 32, opacity: only === -1 ? 1 : 0 }} />
+      </div>
+    </Layer>
+  );
+}
+
 function FactText({ th, row, index, total }: { th: Theme; row: { label: string; value: string }; index: number; total: number }) {
   const valueSize = row.value.length <= 14 ? 110 : row.value.length <= 30 ? 84 : 62;
   return (
@@ -327,6 +356,11 @@ export async function renderReel(params: {
   score?: ReelScore | null;
   // A spoken track (voiceover.ts): mixed over the music, which drops under it.
   voicePath?: string;
+  // A story with no photo of its own (only our branded card): drawn art for the sport behind an animated hook, instead of the card
+  // dropped in as a photo (hookMotion.ts). seed picks the background style.
+  graphic?: { seed: string };
+  // The animated hook (hookMotion.ts) over a photo reel too: the headline builds word by word. A graphic reel always has it.
+  motionHook?: boolean;
 }): Promise<Buffer> {
   const ffmpegPath = (await import("ffmpeg-static")).default as unknown as string | null;
   if (!ffmpegPath) throw new Error("ffmpeg-static has no binary for this platform");
@@ -343,15 +377,18 @@ export async function renderReel(params: {
     { name: "Poppins", data: semibold, weight: 600, style: "normal" },
     ...(head ? [{ name: headFont.family, data: head, weight: headFont.weight, style: "normal" as const }] : []),
   ];
-  const photoDataUri = await loadHeroImageDataUri(params.heroImageUrl);
-  const original = Buffer.from(photoDataUri.slice(photoDataUri.indexOf(",") + 1), "base64");
-  const cropped = await cropForPortrait(original);
+  const graphic = params.graphic ?? null;
+  const animateHook = Boolean(graphic) || Boolean(params.motionHook);
+  const original = graphic
+    ? await heroBackgroundJpeg(graphic.seed, params.category ?? "", W, H)
+    : Buffer.from((await loadHeroImageDataUri(params.heroImageUrl)).split(",")[1] ?? "", "base64");
+  const cropped = graphic ? null : await cropForPortrait(original);
   const photo = cropped ?? original;
   const photoTop = cropped ? PORTRAIT_PHOTO_TOP : PHOTO_TOP;
   const photoMaxH = cropped ? PORTRAIT_PHOTO_H : PHOTO_MAX_H;
   // Text darkening starts where the photo's lower part ends.
-  const darkFrom = cropped ? 52 : 46;
-  const darkTo = cropped ? 68 : 62;
+  const darkFrom = graphic ? 56 : cropped ? 52 : 46;
+  const darkTo = graphic ? 76 : cropped ? 68 : 62;
   const darkEnd = cropped ? 82 : 100;
   const sport = params.category ? categoryChipStyle(params.category.split("/")[0]) : null;
   const facts = params.content.rows.slice(0, 3);
@@ -362,16 +399,28 @@ export async function renderReel(params: {
   const timing = OPENING_TIMING[opening];
 
   // Text scenes back to back; the end card starts where the last fact ends.
-  const texts: { node: ReactElement; seconds: number }[] = [
-    { node: <HookText th={th} content={params.content} scale={opening === "fast" ? FAST_HOOK_SCALE : 1} sportLabel={params.language === "es" && params.category ? categoryLabelEs(params.category.split("/")[0]) : sport?.label ?? null} />, seconds: timing.hook },
-    ...facts.map((row, i) => ({ node: <FactText th={th} row={row} index={i} total={facts.length} />, seconds: timing.fact })),
-  ];
-  const starts: number[] = [];
+  const sportLabel = params.language === "es" && params.category ? categoryLabelEs(params.category.split("/")[0]) : sport?.label ?? null;
+  // start/end: when the layer is on screen; fadeIn/rise: how it enters (seconds, px). The classic hook is on from the first frame.
+  const texts: { node: ReactElement; start: number; end: number; fadeIn: number; rise: number }[] = [];
   let t = 0;
-  for (const s of texts) {
-    starts.push(t);
-    t += s.seconds;
+  if (animateHook) {
+    // Animated hook (hookMotion.ts): the label and bar fade in, then the headline builds word by word, each word rising into place.
+    const words = params.content.hook.split(/\s+/).filter(Boolean);
+    const shown = words.length > 10 ? [...words.slice(0, 9), words.slice(9).join(" ")] : words;
+    const key = keyWordIndex(shown);
+    const wordsDone = WORD_START + (shown.length - 1) * WORD_GAP + 0.3;
+    const hookEnd = Math.max(timing.hook, wordsDone + 0.8);
+    texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={-1} scale={(opening === "fast" ? FAST_HOOK_SCALE : 1) * (graphic ? 1.25 : 1)} />, start: 0, end: hookEnd, fadeIn: 0.2, rise: 0 });
+    shown.forEach((_, k) => texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={k} scale={(opening === "fast" ? FAST_HOOK_SCALE : 1) * (graphic ? 1.25 : 1)} />, start: WORD_START + k * WORD_GAP, end: hookEnd, fadeIn: 0.18, rise: 34 }));
+    t = hookEnd;
+  } else {
+    texts.push({ node: <HookText th={th} content={params.content} scale={opening === "fast" ? FAST_HOOK_SCALE : 1} sportLabel={sportLabel} />, start: 0, end: timing.hook, fadeIn: 0, rise: 0 });
+    t = timing.hook;
   }
+  facts.forEach((row, i) => {
+    texts.push({ node: <FactText th={th} row={row} index={i} total={facts.length} />, start: t, end: t + timing.fact, fadeIn: TRANS_IN, rise: SLIDE });
+    t += timing.fact;
+  });
   const endStart = t;
   const total = endStart + END_SECONDS;
   const frames = Math.round(total * FPS);
@@ -422,7 +471,18 @@ export async function renderReel(params: {
     const bottom = `(${top}+H/${zoom})`;
     const sw = W * SS;
     const sh = H * SS;
-    const filters: string[] = [
+    // Drawn art: the whole frame is the background, with a slow push-in.
+    const gEase = `(1-pow(1-in/${frames}\\,3))`;
+    const gZoom = `(1+0.06*${gEase})`;
+    const gLeft = `((W-W/${gZoom})*0.5)`;
+    const gTop = `((H-H/${gZoom})*0.5)`;
+    const bgFilters = graphic
+      ? [
+        `[0:v]scale=${sw}:${sh}:flags=lanczos,format=yuv444p,loop=loop=${frames - 1}:size=1,settb=1/${FPS},setpts=N,` +
+          `perspective=x0='${gLeft}':y0='${gTop}':x1='(${gLeft}+W/${gZoom})':y1='${gTop}':x2='${gLeft}':y2='(${gTop}+H/${gZoom})':x3='(${gLeft}+W/${gZoom})':y3='(${gTop}+H/${gZoom})':interpolation=cubic:sense=source:eval=frame,` +
+          `scale=${W}:${H}:flags=lanczos,fps=${FPS},format=yuv420p[bg]`,
+      ]
+      : [
       // Blurred fill: blurred small (cheap), then scaled back up.
       `[0:v]split[pa][pb]`,
       `[pa]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,boxblur=12:2,eq=brightness=-0.18:saturation=0.8,scale=${sw}:${sh}[fill]`,
@@ -430,19 +490,22 @@ export async function renderReel(params: {
       `[fill][fg]overlay=0:${photoTop * SS},format=yuv444p,loop=loop=${frames - 1}:size=1,settb=1/${FPS},setpts=N,` +
         `perspective=x0='${left}':y0='${top}':x1='${right}':y1='${top}':x2='${left}':y2='${bottom}':x3='${right}':y3='${bottom}':interpolation=cubic:sense=source:eval=frame,` +
         `scale=${W}:${H}:flags=lanczos,fps=${FPS},format=yuv420p[bg]`,
+      ];
+    const filters: string[] = [
+      ...bgFilters,
       `[bg][1:v]overlay=0:0:format=auto[v0]`,
     ];
     let last = "v0";
     texts.forEach((s, i) => {
-      const start = starts[i];
-      const end = start + s.seconds;
-      // Fades in OVERLAP early, over the previous scene's fade-out.
-      const inAt = i === 0 ? start : start - OVERLAP;
-      const fadeIn = i === 0 ? "" : `fade=t=in:st=${f(inAt)}:d=${TRANS_IN}:alpha=1,`;
+      const start = s.start;
+      const end = s.end;
+      // A fact fades in OVERLAP early, over the previous scene's fade-out; a hook layer starts exactly on its time.
+      const inAt = s.fadeIn === TRANS_IN && s.rise === SLIDE ? start - OVERLAP : start;
+      const fadeIn = s.fadeIn > 0 ? `fade=t=in:st=${f(inAt)}:d=${s.fadeIn}:alpha=1,` : "";
       filters.push(`[${2 + i}:v]format=rgba,${fadeIn}fade=t=out:st=${f(end - TRANS_OUT)}:d=${TRANS_OUT}:alpha=1[t${i}]`);
       // Eased slide: up into place while entering (the hook is already in
       // place at t=0), drifting up while leaving.
-      const rise = i === 0 ? "0" : `${SLIDE}*pow(1-clip((t-${f(inAt)})/${TRANS_IN}\\,0\\,1)\\,2)`;
+      const rise = s.rise > 0 ? `${s.rise}*pow(1-clip((t-${f(inAt)})/${s.fadeIn}\\,0\\,1)\\,2)` : "0";
       const drift = `${DRIFT}*(1-pow(1-clip((t-${f(end - TRANS_OUT)})/${TRANS_OUT}\\,0\\,1)\\,2))`;
       filters.push(`[${last}][t${i}]overlay=x=0:y='${rise}-${drift}':enable='between(t\\,${f(inAt)}\\,${f(end)})'[v${i + 1}]`);
       last = `v${i + 1}`;
