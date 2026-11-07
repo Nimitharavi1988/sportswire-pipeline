@@ -444,7 +444,7 @@ export async function postReel(
     const unknown = unknownNames(voice.text);
     if (unknown.length) console.log(`[voiceover] names not in the pronunciation list: ${unknown.join(", ")}`);
   }
-  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null }));
+  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null, layout: layoutKind, noPhoto: isFallbackCard(article.heroImageUrl) }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
   if (score) console.log(`[reel] score strip: ${score.home} ${score.homeScore} - ${score.awayScore} ${score.away} (${score.label})`);
@@ -452,7 +452,7 @@ export async function postReel(
   // the animated hook on Instagram, the topic Pages and YouTube (the main Page keeps the classic one).
   const plan = planReels({ noPhoto: isFallbackCard(article.heroImageUrl), isTopicPage: Boolean(opts.topicPage), needInstagram, needFacebook, needYouTube, ...reelSwitches(process.env) });
   if (plan.graphic) console.log("[reel] no photo of its own: graphic reel (drawn art, animated hook)");
-  const render = (youtube: boolean, motionHook: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: voicePath ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook });
+  const render = (youtube: boolean, motionHook: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: voicePath ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook, soundHook: Boolean(opts.topicPage) });
   // Instagram/Facebook share one render per version (motion hook or classic); the YouTube Short gets its own end card (Subscribe, link in the description).
   const mp4Motion = plan.renderMotion ? await render(false, true) : null;
   const mp4Classic = plan.renderClassic ? await render(false, false) : null;

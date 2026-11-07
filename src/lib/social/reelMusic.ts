@@ -335,8 +335,8 @@ function rng(seed: number) {
 
 const midiHz = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
-// swooshAt: times (seconds) for a transition swoosh, mixed over the music.
-export function generateReelMusic(seconds: number, styleName: ReelMusicStyle = "drive", sfx: { swooshAt?: number[] } = {}): Buffer {
+// swooshAt: times (seconds) for a transition swoosh, mixed over the music. hitAt: times for a low impact hit (the sound hook).
+export function generateReelMusic(seconds: number, styleName: ReelMusicStyle = "drive", sfx: { swooshAt?: number[]; hitAt?: number[] } = {}): Buffer {
   const st: MusicStyle = REEL_MUSIC_STYLES[styleName];
   const n = Math.ceil(seconds * SR);
   const L = new Float32Array(n);
@@ -471,6 +471,19 @@ export function generateReelMusic(seconds: number, styleName: ReelMusicStyle = "
       band += c * high;
       low += c * band;
       add(start + k, band * Math.sin(Math.PI * p) ** 2 * musicPeak * 0.1, -0.6 + 1.2 * p);
+    }
+  }
+
+  // Impact hits for the sound hook: a low drop (sine falling from 120 to 42 Hz) with a short click, centred, as the hook's first word lands.
+  for (const at of sfx.hitAt ?? []) {
+    const start = Math.floor(at * SR);
+    const len = Math.floor(0.5 * SR);
+    let phase = 0;
+    for (let k = 0; k < len; k++) {
+      const p = k / len;
+      phase += (2 * Math.PI * (42 + 78 * Math.exp(-p * 7))) / SR;
+      const click = k < 0.012 * SR ? noise() * (1 - k / (0.012 * SR)) : 0;
+      add(start + k, (Math.sin(phase) * Math.exp(-p * 5.5) * 0.55 + click * 0.25) * musicPeak, 0);
     }
   }
 

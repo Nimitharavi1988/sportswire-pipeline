@@ -470,6 +470,8 @@ export async function renderReel(params: {
   graphic?: { seed: string };
   // The animated hook (hookMotion.ts) over a photo reel too: the headline builds word by word. A graphic reel always has it.
   motionHook?: boolean;
+  // The sound hook (2026-11-07, topic Pages only): a low impact hit just after the whoosh as the hook lands, on every destination.
+  soundHook?: boolean;
 }): Promise<Buffer> {
   const ffmpegPath = (await import("ffmpeg-static")).default as unknown as string | null;
   if (!ffmpegPath) throw new Error("ffmpeg-static has no binary for this platform");
@@ -558,7 +560,7 @@ export async function renderReel(params: {
   try {
     const photoPath = join(workDir, "photo");
     const musicPath = params.musicPath ?? join(workDir, "music.wav");
-    if (!params.musicPath) await writeFile(musicPath, generateReelMusic(total, params.musicStyle, params.youtube && animateHook ? { swooshAt: [0.05] } : {}));
+    if (!params.musicPath) await writeFile(musicPath, generateReelMusic(total, params.musicStyle, animateHook && (params.youtube || params.soundHook) ? { swooshAt: [0.05], ...(params.soundHook ? { hitAt: [0.3] } : {}) } : {}));
     const chromePath = join(workDir, "layer-chrome.png");
     const textPaths = texts.map((_, i) => join(workDir, `layer-text-${i + 1}.png`));
     const endPath = join(workDir, "layer-end.png");

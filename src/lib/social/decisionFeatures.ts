@@ -20,6 +20,9 @@ export interface ReelFeatureInput {
   storyType?: string;
   opening?: string;
   voice?: string | null;
+  // The hook layout (hookLayout.ts) and whether the story had no photo of its own (a graphic reel): recorded from 2026-11-07.
+  layout?: string;
+  noPhoto?: boolean;
   hookMeta?: { style: string; by: string; candidates: unknown[] };
 }
 
@@ -45,6 +48,8 @@ export function reelFeatures(i: ReelFeatureInput): Record<string, unknown> {
     storyType: i.storyType ?? null,
     opening: i.opening ?? null,
     voice: i.voice ?? null,
+    layout: i.layout ?? null,
+    noPhoto: i.noPhoto ?? null,
     hookStyle: i.hookMeta?.style ?? null,
     hookChosenBy: i.hookMeta?.by ?? null,
     hookCandidates: i.hookMeta?.candidates ?? null,
