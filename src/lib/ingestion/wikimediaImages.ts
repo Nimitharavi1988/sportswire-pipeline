@@ -218,7 +218,7 @@ export interface PhotoCandidate {
 // File names/titles of group photos: "Burrow_and_Bernard.jpg",
 // "LSU_Football_at_the_White_House.jpg" (both picked for a Joe Burrow story in
 // the first live test, 2026-11-06). Pure.
-const GROUP_PHOTO_PATTERN = /\b(and|with|team|squad|teammates|white house|ceremony|parade|group|celebrat\w*|reception|visit)\b/i;
+const GROUP_PHOTO_PATTERN = /\b(and|with|team|squad|teammates|white house|ceremony|parade|group|celebrat\w*|reception|visit|mural|vs|v|champions league|europa league|fu(ss|ß)ball|premier league|friendly|final)\b|\(\d{1,2}-\d{1,2}\)/i;
 export function looksLikeGroupPhoto(fileNameAndTitle: string): boolean {
   return GROUP_PHOTO_PATTERN.test(fileNameAndTitle.replace(/_+/g, " "));
 }
@@ -294,7 +294,12 @@ function notePhotoUse(url: string): void {
 // The best candidates for a story, then a seeded pick among the top few for
 // variety; anything already used PHOTO_REUSE_LIMIT times is skipped (if every
 // candidate is, the least used one is taken rather than none). Pure.
-export function choosePhoto(candidates: PhotoCandidate[], seed: string, usage: Map<string, number>): PhotoCandidate | null {
+export function choosePhoto(all: PhotoCandidate[], seed: string, usage: Map<string, number>): PhotoCandidate | null {
+  // A match, mural or group photo is not a picture of the person (Cole Palmer story got a Man City match shot, 2026-11-07): only the
+  // Wikipedia lead image may be one. No candidate left means no photo, and the story keeps its card.
+  const nowYear = new Date().getUTCFullYear();
+  // A photo of 7+ years ago shows an old team and kit (Trent Alexander-Arnold in 2016 for a Real Madrid story): lead image only.
+  const candidates = all.filter((c) => c.isLead || (!c.group && (c.year === null || nowYear - c.year <= 6)));
   if (candidates.length === 0) return null;
   const uses = (c: PhotoCandidate) => usage.get(c.fileName.replace(/ /g, "_").toLowerCase()) ?? 0;
   const fresh = candidates.filter((c) => uses(c) < PHOTO_REUSE_LIMIT);
