@@ -93,7 +93,8 @@ export function matchRefreshValues(item: RawMatchItem, existingMatchStatus: stri
     awayRecord: item.awayRecord,
     broadcast: item.broadcast,
     matchKey: buildMatchKey(item.category, item.kickoffAt, item.homeTeam, item.awayTeam),
-    ...(isCricketData || justFinished ? { summary: item.summary, body: item.body } : {}),
+    // CricketData's live text refreshes every poll, but not once the match is over: the written result replaces it then.
+    ...((isCricketData && existingMatchStatus !== "finished") || justFinished ? { summary: item.summary, body: item.body } : {}),
     ...(justFinished && !isCricketData ? { title: item.title } : {}),
     ...placeholderResolution(existing, item, now),
     ...(moved ? { kickoffAt: moved, ...(item.publishedAt.getTime() === moved.getTime() ? { publishedAt: moved } : {}) } : {}),

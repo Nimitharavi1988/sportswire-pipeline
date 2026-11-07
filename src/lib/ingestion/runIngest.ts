@@ -631,7 +631,27 @@ export async function runIngest() {
         await db.update(article)
           .set(matchRefreshValues(item, existing.matchStatus, new Date(), existing))
           .where(eq(article.id, existing.id));
+        const wasFinished = existing.matchStatus === "finished";
         existing.matchStatus = item.matchStatus ?? null;
+        // A finished match was stored with only the plain template line ("X played Y... Scores..."); the written result is only
+        // generated at creation, so a match stored while upcoming or live never got one (India v NZ 2nd ODI, 2026-11-07). Write it
+        // now, once: the stored body still equals the template, or it was just replaced by it at the finish. Shares the recap budget.
+        const templateBody = Boolean(item.body) && (!wasFinished || existing.body === item.body);
+        if (item.matchStatus === "finished" && templateBody && item.body && matchRecapCalls < MAX_MATCH_RECAP_PER_RUN) {
+          matchRecapCalls++;
+          const competition =
+            item.category === "cricket" ? "cricket"
+            : item.category === "american-football" ? "the NFL"
+            : item.category === "baseball" ? "MLB"
+            : item.category === "basketball" ? "the NBA"
+            : competitionFromSummary(item.summary) ?? "football";
+          const recap = await generateMatchRecap(item.title, item.body, competition);
+          if (recap) {
+            await db.update(article).set({ body: recap, updatedAt: new Date() }).where(eq(article.id, existing.id));
+            existing.body = recap;
+          }
+          await sleep(COMMENTARY_DELAY_MS);
+        }
       }
 
       // Only RSS items can be missing a body this way — match-data items
