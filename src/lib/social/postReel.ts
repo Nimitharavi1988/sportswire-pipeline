@@ -9,6 +9,7 @@ import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
 import { loadScoreStrip } from "./reelScore";
+import { chooseHookLayout } from "./hookLayout";
 import { db } from "@/db";
 import { article as articleTable, vertical as verticalTable, socialPost as socialPostTable } from "@/db/schema";
 import { and, count, eq, gte, inArray, like, max, ne } from "drizzle-orm";
@@ -20,7 +21,7 @@ import { renderReel } from "./reel";
 import { planReels, reelSwitches } from "./reelPlan";
 import { isFallbackCard } from "../fallbackCards";
 import { musicStyleFor, type ReelMusicStyle } from "./reelMusic";
-import { reelThemeFor, type ReelTheme, type ReelFont } from "./reelThemes";
+import { reelThemeForLayout, type ReelTheme, type ReelFont } from "./reelThemes";
 import { resolvePageAccessToken, translationFor } from "./facebook";
 import { LOCALES } from "@/lib/i18n/locales";
 import { selectInstagramHashtags, selectFacebookHashtags, selectTopicInstagramHashtags } from "./hashtagRepertoire";
@@ -427,7 +428,10 @@ export async function postReel(
   // Topic Pages pick music by the story's mood and sport; the main Page and Instagram keep the original rotation.
   const music = opts.music ?? musicStyleFor(article.id, opts.topicPage ? { title: article.title, category: article.category } : undefined);
   // An explicit colour wins; otherwise every reel (main Page, topic Pages, Instagram, YouTube) rotates by sport (reelThemes.ts).
-  const theme = opts.theme ?? reelThemeFor(article.id, article.category);
+  // The score strip is loaded first: whether the story has a score is part of choosing its layout, and the layout sets the colour.
+  const score = await loadScoreStrip(article.title, locale === "es" ? "es" : "en");
+  const layoutKind = chooseHookLayout({ hook: content.hook, hasScore: Boolean(score) }).layout;
+  const theme = opts.theme ?? reelThemeForLayout(layoutKind, article.id, article.category);
   // What this reel was made with, recorded with its outcome by recordAttempt (decisionLog.ts).
   // The reel's opening: half the stories get the fast one, half the classic (the control); recorded in the decision log.
   const opening = openingFor(article.id);
@@ -443,7 +447,6 @@ export async function postReel(
   setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
-  const score = await loadScoreStrip(article.title, locale === "es" ? "es" : "en");
   if (score) console.log(`[reel] score strip: ${score.home} ${score.homeScore} - ${score.awayScore} ${score.away} (${score.label})`);
   // Which version each destination gets (reelPlan.ts): no photo of its own -> the graphic reel everywhere; a photo -> the photo reel, with
   // the animated hook on Instagram, the topic Pages and YouTube (the main Page keeps the classic one).
