@@ -531,7 +531,8 @@ export async function renderReel(params: {
     const zone: HookZone = { ...zoneByLayout[choice.layout], shadow: photoMode };
     const startAt = choice.layout === "number" || choice.layout === "score" ? 0.1 : 0.05;
     const hookDone = startAt + (shown.length - 1) * WORD_GAP + 0.3;
-    const hookEndLayout = Math.max(timing.hook, hookDone + 0.8);
+    // Held long enough to read once the last word is in (2026-11-07: the hook left too quickly): 1.6 s after it, the dissolve starting 0.45 s before the end.
+    const hookEndLayout = Math.max(timing.hook, hookDone + 1.6);
     const hookSceneEnd = hookEndLayout;
     texts.push({ node: <HeroLayer th={th} layout={choice.layout} hero={choice.hero} score={layoutScore} top={heroTop} scrim={photoMode && (choice.layout === "number" || choice.layout === "score")} compact={photoMode} sportLabel={sportLabel} eyebrow={params.content.eyebrow} />, start: 0, end: hookSceneEnd + HOOK_LINGER, fadeIn: 0, rise: 0, fadeOut: HOOK_DISSOLVE });
     shown.forEach((_, k) => texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={k} scale={1} zone={zone} />, start: startAt + k * WORD_GAP, end: hookSceneEnd + HOOK_LINGER, fadeIn: 0.18, rise: 34, fadeOut: HOOK_DISSOLVE }));

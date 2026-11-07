@@ -46,6 +46,14 @@ export function reelThemeFor(id: string, category?: string | null): ReelTheme {
   return pool[Math.floor(h / 4) % pool.length];
 }
 
+// Colour by story type (2026-11-07): the hook layout (hookLayout.ts) sets the colour, so layout and colour together become a pattern viewers
+// learn - a score story is blue, a question purple, a number story orange. A plain headline keeps the per-sport rotation above.
+const THEME_BY_LAYOUT: Record<string, ReelTheme> = { score: "blue", question: "purple", number: "orange" };
+
+export function reelThemeForLayout(layout: string, id: string, category?: string | null): ReelTheme {
+  return THEME_BY_LAYOUT[layout] ?? reelThemeFor(id, category);
+}
+
 // Headline fonts for reels: the hook, the fact values and the end card's
 // question. Labels and small text stay Poppins. `file` is in
 // src/assets/fonts (null = Poppins Bold, already loaded); `scale` evens out
@@ -60,11 +68,3 @@ export const REEL_FONTS = {
 export type ReelFont = keyof typeof REEL_FONTS;
 export const REEL_FONT_NAMES = Object.keys(REEL_FONTS) as ReelFont[];
 export const DEFAULT_REEL_FONT: ReelFont = "poppins";
-
-// Colour by story type (2026-11-07): the hook layout (hookLayout.ts) sets the colour, so layout and colour together become a pattern viewers
-// learn - a score story is blue, a question purple, a number story orange. A plain headline keeps the per-sport rotation above.
-const THEME_BY_LAYOUT: Record<string, ReelTheme> = { score: "blue", question: "purple", number: "orange" };
-
-export function reelThemeForLayout(layout: string, id: string, category?: string | null): ReelTheme {
-  return THEME_BY_LAYOUT[layout] ?? reelThemeFor(id, category);
-}
