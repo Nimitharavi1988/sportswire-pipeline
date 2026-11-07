@@ -14,7 +14,7 @@ export const MIN_GROUP = 8;
 
 // The features worth comparing, each as a label and a function that reads its value from a row. A missing feature is "(not recorded)".
 export const DIMENSIONS: { label: string; value: (r: ReelRow) => string }[] = [
-  { label: "voice", value: (r) => (r.features?.voice ? "voiced" : "silent") },
+  { label: "voice", value: (r) => ((r.platform === "youtube" ? r.features?.youtubeVoice || r.features?.voice : r.features?.voice) ? "voiced" : "silent") },
   { label: "colour", value: (r) => text(r.features?.theme) },
   { label: "hook layout", value: (r) => text(r.features?.layout) },
   { label: "photo or graphic", value: (r) => (typeof r.features?.noPhoto !== "boolean" ? "(not recorded)" : r.features.noPhoto ? "graphic (no photo)" : "photo") },

@@ -36,6 +36,12 @@ export function voiceoverPages(env: Record<string, string | undefined> = process
   return (env.VOICEOVER_PAGES ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+// The English YouTube channel (2026-11-07): the key "youtube" in VOICEOVER_PAGES gives every English Short the commentary voice, also the ones
+// made from main Page stories. Only the Short's own render has it; the main Page's and main Instagram's files stay as they are.
+export function youtubeVoiceOn(env: Record<string, string | undefined> = process.env): boolean {
+  return voiceoverPages(env).includes("youtube");
+}
+
 // Half the stories (by id) of a listed Page get the voice, the rest stay silent as the comparison.
 export function voiceoverFor(topicKey: string | undefined, articleId: string, env: Record<string, string | undefined> = process.env): boolean {
   if (!topicKey || !voiceoverPages(env).includes(topicKey)) return false;

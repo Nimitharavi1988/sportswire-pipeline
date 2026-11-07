@@ -4,7 +4,7 @@ import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVar
 import { withSportKeyword } from "./reelKeyword";
 import { graphErrorDetail, recoverPublishedReel } from "./igPublishRecovery";
 import { unknownNames } from "./speechNames";
-import { buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor } from "./voiceover";
+import { buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor, youtubeVoiceOn } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -438,14 +438,20 @@ export async function postReel(
   const opening = openingFor(article.id);
   // Voice pilot (voiceover.ts): English reels of the listed topic Pages, half the stories; never the main Page. Silent on any failure.
   const voiceName = !locale && opts.topicPage && voiceoverFor(opts.topicPage.key, article.id) ? pickVoice(article.id) : null;
-  const voice = voiceName ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), voiceName, [...article.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 17)) : null;
+  const voiceSeed = [...article.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 17);
+  const voice = voiceName ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), voiceName, voiceSeed) : null;
   const voicePath = voice?.path ?? null;
   if (voice) {
     console.log(`[voiceover] ${voiceName}, ${voice.seconds.toFixed(1)} s: ${voice.text}`);
     const unknown = unknownNames(voice.text);
     if (unknown.length) console.log(`[voiceover] names not in the pronunciation list: ${unknown.join(", ")}`);
   }
-  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null, layout: layoutKind, noPhoto: isFallbackCard(article.heroImageUrl) }));
+  // The YouTube Short's own voice (voiceover.ts youtubeVoiceOn): every English Short has the commentary, including those from main Page stories whose
+  // Instagram and Facebook reels stay silent. A voiced topic Page reel already has one, and the Short uses it.
+  const youtubeVoice = needYouTube && !locale && !voicePath && youtubeVoiceOn() ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), pickVoice(article.id), voiceSeed) : null;
+  const youtubeVoicePath = voicePath ?? youtubeVoice?.path ?? null;
+  if (youtubeVoice) console.log(`[voiceover] YouTube Short only, ${youtubeVoice.seconds.toFixed(1)} s: ${youtubeVoice.text}`);
+  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null, youtubeVoice: Boolean(youtubeVoicePath), layout: layoutKind, noPhoto: isFallbackCard(article.heroImageUrl) }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
   if (score) console.log(`[reel] score strip: ${score.home} ${score.homeScore} - ${score.awayScore} ${score.away} (${score.label})`);
@@ -453,7 +459,7 @@ export async function postReel(
   // the animated hook on Instagram, the topic Pages and YouTube (the main Page keeps the classic one).
   const plan = planReels({ noPhoto: isFallbackCard(article.heroImageUrl), isTopicPage: Boolean(opts.topicPage), needInstagram, needFacebook, needYouTube, ...reelSwitches(process.env) });
   if (plan.graphic) console.log("[reel] no photo of its own: graphic reel (drawn art, animated hook)");
-  const render = (youtube: boolean, motionHook: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: voicePath ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook, soundHook: Boolean(opts.topicPage), punchZoom: Boolean(opts.topicPage) });
+  const render = (youtube: boolean, motionHook: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: (youtube ? youtubeVoicePath : voicePath) ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook, soundHook: Boolean(opts.topicPage), punchZoom: Boolean(opts.topicPage) });
   // Instagram/Facebook share one render per version (motion hook or classic); the YouTube Short gets its own end card (Subscribe, link in the description).
   const mp4Motion = plan.renderMotion ? await render(false, true) : null;
   const mp4Classic = plan.renderClassic ? await render(false, false) : null;
