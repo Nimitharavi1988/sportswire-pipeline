@@ -6,8 +6,9 @@
 
 export const CARD_DIR = "/cards/";
 export const CARD_VARIANTS = 4;
-// Wait this long for a real photo (the person-photo lookup, a duplicate refresh) before falling back to a card.
-export const FALLBACK_CARD_AFTER_HOURS = 4;
+// Wait this long for a real photo (the person-photo lookup, a duplicate refresh) before falling back to a card. 4 h until 2026-11-07, then 1 h:
+// news is only fresh for hours (reels use 12) and the story waited most of that for a card.
+export const FALLBACK_CARD_AFTER_HOURS = 1;
 
 const SITE = "https://www.sportswirelive.com";
 
