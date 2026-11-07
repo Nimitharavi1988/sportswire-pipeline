@@ -41,6 +41,13 @@ export function motionProgress(opening: Opening, x: number): number {
 }
 
 // The same curve as an ffmpeg expression over the frame number `in` (commas escaped for the filter graph).
+// The punch zoom (2026-11-07, topic Pages): the picture starts `strength` bigger (0.08 = 8%) and settles to its normal size over `seconds`,
+// landing with the sound hook's impact. A factor to multiply the zoom by, as an ffmpeg expression in the frame number "in"; "1" when off.
+export function punchExpr(strength: number, seconds: number, fps: number): string {
+  if (!(strength > 0) || !(seconds > 0)) return "1";
+  return `(1+${strength}*pow(max(0\\,1-in/${Math.max(1, Math.round(seconds * fps))})\\,2))`;
+}
+
 export function motionExpr(opening: Opening, frames: number): string {
   return opening === "fast" ? `(1-pow(1-in/${frames}\\,3))` : `((1-cos(PI*in/${frames}))/2)`;
 }

@@ -21,7 +21,7 @@ const execFileAsync = promisify(execFile);
 
 import type { ReelScore } from "./reelScore";
 import { columnDetail, cropFit, cropKeepsSubject } from "./reelCropFit";
-import { OPENING_TIMING, OPENING_MOTION, FAST_HOOK_SCALE, motionExpr, type Opening } from "./reelOpening";
+import { OPENING_TIMING, OPENING_MOTION, FAST_HOOK_SCALE, motionExpr, punchExpr, type Opening } from "./reelOpening";
 const W = 1080;
 const H = 1920;
 const FPS = 30;
@@ -64,6 +64,9 @@ const OVERLAP = 0.05;
 // The animated hook dissolves slowly instead of cutting: it fades over HOOK_DISSOLVE seconds, the last HOOK_LINGER of them under the first fact.
 const HOOK_DISSOLVE = 0.7;
 const HOOK_LINGER = 0.25;
+// The punch zoom: how much bigger the picture starts, and how long it takes to settle.
+const PUNCH_ZOOM = 0.08;
+const PUNCH_SECONDS = 0.45;
 const SLIDE = 50;
 const DRIFT = 30;
 // Kept quick (~12s, was ~14s): short reels get watched through and replayed. The hook and fact lengths are in
@@ -472,6 +475,8 @@ export async function renderReel(params: {
   motionHook?: boolean;
   // The sound hook (2026-11-07, topic Pages only): a low impact hit just after the whoosh as the hook lands, on every destination.
   soundHook?: boolean;
+  // The punch zoom (topic Pages): the picture or art starts a little bigger and settles as the hook lands (reelOpening.ts punchExpr).
+  punchZoom?: boolean;
 }): Promise<Buffer> {
   const ffmpegPath = (await import("ffmpeg-static")).default as unknown as string | null;
   if (!ffmpegPath) throw new Error("ffmpeg-static has no binary for this platform");
@@ -595,7 +600,8 @@ export async function renderReel(params: {
     // once the photo also pans (frame-to-frame motion varying ~28%).
     const ease = motionExpr(opening, frames);
     const { zoom: ZOOM, panX: PAN_X, panY: PAN_Y } = OPENING_MOTION[opening];
-    const zoom = `(1+${ZOOM}*${ease})`;
+    const punch = animateHook && params.punchZoom ? punchExpr(PUNCH_ZOOM, PUNCH_SECONDS, FPS) : "1";
+    const zoom = `((1+${ZOOM}*${ease})*${punch})`;
     const left = `((W-W/${zoom})*(${(1 - PAN_X) / 2}+${PAN_X}*${ease}))`;
     const top = `((H-H/${zoom})*(${(1 + PAN_Y) / 2}-${PAN_Y}*${ease}))`;
     const right = `(${left}+W/${zoom})`;
@@ -604,7 +610,7 @@ export async function renderReel(params: {
     const sh = H * SS;
     // Drawn art: the whole frame is the background, with a slow push-in.
     const gEase = `(1-pow(1-in/${frames}\\,3))`;
-    const gZoom = `(1+0.06*${gEase})`;
+    const gZoom = `((1+0.06*${gEase})*${punch})`;
     const gLeft = `((W-W/${gZoom})*0.5)`;
     const gTop = `((H-H/${gZoom})*0.5)`;
     const bgFilters = graphic
