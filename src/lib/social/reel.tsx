@@ -13,6 +13,8 @@ import { REEL_THEMES, DEFAULT_REEL_THEME, REEL_FONTS, DEFAULT_REEL_FONT, type Re
 import { categoryLabelEs } from "../i18n/es";
 import { heroBackgroundJpeg } from "./heroGraphic";
 import { keyWordIndex, WORD_GAP, WORD_START } from "./hookMotion";
+import { chooseHookLayout, openLoopText, type HookHero, type HookLayout } from "./hookLayout";
+import { teamBadgeColor, teamBadgeLetters, teamCode } from "../teamBadge";
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +65,8 @@ const DRIFT = 30;
 // Kept quick (~12s, was ~14s): short reels get watched through and replayed. The hook and fact lengths are in
 // reelOpening.ts (OPENING_TIMING), per opening.
 const END_SECONDS = 1.9;
+// The YouTube Short loops: a shorter end card (YouTube's own editing advice, 2026-11-07).
+const END_SECONDS_YOUTUBE = 1.5;
 // Thin bar along the top edge filling up over the reel, so viewers can see
 // it's short and stay to the end.
 const PROGRESS_H = 10;
@@ -196,8 +200,27 @@ function HookText({ th, content, sportLabel, scale = 1 }: { th: Theme; content: 
 
 // The animated hook's layers (graphic reels): only === -1 is the label, eyebrow and bar; only === k is word k alone, in the headline's own
 // position (the other words are transparent, so the layout never shifts). Stacked, they build the headline word by word.
-function HookWordsLayer({ th, content, sportLabel, words, key_, only, scale }: { th: Theme; content: PosterContent; sportLabel: string | null; words: string[]; key_: number; only: number; scale: number }) {
+// Where the animated hook sits (hook layouts): the top of its block and its type size, per layout, and how it looks over a photo.
+interface HookZone {
+  top: number;
+  size: number;
+  keyColor?: string;
+  shadow: boolean;
+}
+
+function HookWordsLayer({ th, content, sportLabel, words, key_, only, scale, zone }: { th: Theme; content: PosterContent; sportLabel: string | null; words: string[]; key_: number; only: number; scale: number; zone?: HookZone }) {
   const size = Math.round(hookSize(content.hook) * scale);
+  if (zone) {
+    return (
+      <Layer>
+        <div style={{ position: "absolute", top: zone.top, left: 70, width: W - 140, display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "flex-start", lineHeight: 1.1, ...(zone.shadow ? { textShadow: "0 3px 22px rgba(0,0,0,0.8)" } : {}) }}>
+          {words.map((w, i) => (
+            <div key={i} style={{ display: "flex", margin: "0 12px", opacity: only === i ? 1 : 0, color: i === key_ ? zone.keyColor ?? th.accent : "white", ...th.head(zone.size) }}>{w}</div>
+          ))}
+        </div>
+      </Layer>
+    );
+  }
   return (
     <Layer>
       <div style={{ display: "flex", flex: 1 }} />
@@ -221,7 +244,77 @@ function HookWordsLayer({ th, content, sportLabel, words, key_, only, scale }: {
   );
 }
 
-function FactText({ th, row, index, total }: { th: Theme; row: { label: string; value: string }; index: number; total: number }) {
+// The top row of a hook-layout reel: the sport tag and eyebrow, under the wordmark.
+function TagRow({ th, sportLabel, eyebrow }: { th: Theme; sportLabel: string | null; eyebrow: string }) {
+  return (
+    <div style={{ position: "absolute", top: 262, left: 60, display: "flex", alignItems: "center" }}>
+      {sportLabel && (
+        <div style={{ display: "flex", padding: "8px 18px", borderRadius: 8, background: th.accent, color: "white", fontSize: 30, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginRight: 18 }}>{sportLabel}</div>
+      )}
+      <div style={{ display: "flex", color: "rgba(255,255,255,0.9)", fontSize: 30, fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>{eyebrow}</div>
+    </div>
+  );
+}
+
+// The hero element of a hook layout: a big number ("42 POINTS") or the two team badges around the score. Shown from the first frame.
+function HeroLayer({ th, layout, hero, score, top, scrim, compact, sportLabel, eyebrow }: { th: Theme; layout: HookLayout; hero: HookHero | null; score: ReelScore | null; top: number; scrim: boolean; compact: boolean; sportLabel: string | null; eyebrow: string }) {
+  const shadow = "0 4px 26px rgba(0,0,0,0.75)";
+  const circle = compact ? 150 : 190;
+  const badge = (name: string) => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: compact ? 230 : 260 }}>
+      <div style={{ display: "flex", width: circle, height: circle, borderRadius: circle, background: teamBadgeColor(name), color: "white", alignItems: "center", justifyContent: "center", fontSize: Math.round(circle * 0.4), fontWeight: 700 }}>{teamBadgeLetters(teamCode(name), 100)}</div>
+      <div style={{ display: "flex", marginTop: 16, fontSize: compact ? 28 : 34, fontWeight: 700, color: "white", textAlign: "center", justifyContent: "center", textShadow: shadow }}>{name.length > 15 ? name.slice(0, 14) + "…" : name}</div>
+    </div>
+  );
+  return (
+    <Layer>
+      {scrim && <div style={{ position: "absolute", top: 520, left: 0, width: W, height: 800, display: "flex", background: `linear-gradient(180deg, ${th.shade(0)} 0%, ${th.shade(0.6)} 35%, ${th.shade(0.6)} 70%, ${th.shade(0)} 100%)` }} />}
+      <TagRow th={th} sportLabel={sportLabel} eyebrow={eyebrow} />
+      {layout === "number" && hero && (
+        <div style={{ position: "absolute", top, left: 0, width: W, display: "flex", flexDirection: "column", alignItems: "center", textShadow: shadow }}>
+          <div style={{ display: "flex", fontSize: compact ? (hero.value.length > 3 ? 190 : 250) : hero.value.length > 3 ? 300 : 400, fontWeight: 700, lineHeight: 1, color: th.accent }}>{hero.value}</div>
+          {hero.label && <div style={{ display: "flex", marginTop: -6, fontSize: compact ? 44 : 60, fontWeight: 700, letterSpacing: compact ? 7 : 10, color: "white" }}>{hero.label}</div>}
+        </div>
+      )}
+      {layout === "score" && score && (
+        <div style={{ position: "absolute", top, left: 40, width: W - 80, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          {badge(score.home)}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginTop: 10, textShadow: shadow }}>
+            <div style={{ display: "flex", fontSize: compact ? 130 : 170, fontWeight: 700, lineHeight: 1, color: "white" }}>{score.homeScore}-{score.awayScore}</div>
+            <div style={{ display: "flex", marginTop: 6, padding: "8px 22px", borderRadius: 10, background: th.accent, color: "white", fontSize: 34, fontWeight: 700, letterSpacing: 3, textTransform: "uppercase" }}>{score.label}</div>
+          </div>
+          {badge(score.away)}
+        </div>
+      )}
+    </Layer>
+  );
+}
+
+function OpenLoopPill({ th, text, top }: { th: Theme; text: string; top: number }) {
+  return (
+    <Layer>
+      <div style={{ position: "absolute", top, left: 0, width: W, display: "flex", justifyContent: "center" }}>
+        <div style={{ display: "flex", padding: "14px 30px", borderRadius: 40, background: th.accent, color: "white", fontSize: 40, fontWeight: 700, letterSpacing: 1 }}>{text}</div>
+      </div>
+    </Layer>
+  );
+}
+
+// Splits a fact value into plain and number parts ("42 points", "3-1", "$12.5m", "78%"), so the numbers can be coloured.
+export function splitNumbers(value: string): { text: string; num: boolean }[] {
+  const out: { text: string; num: boolean }[] = [];
+  const re = /[$€£]?\d[\d.,:/%-]*\d%?|[$€£]?\d%?/g;
+  let last = 0;
+  for (const m of value.matchAll(re)) {
+    if (m.index! > last) out.push({ text: value.slice(last, m.index), num: false });
+    out.push({ text: m[0], num: true });
+    last = m.index! + m[0].length;
+  }
+  if (last < value.length) out.push({ text: value.slice(last), num: false });
+  return out;
+}
+
+function FactText({ th, row, index, total, highlight = false }: { th: Theme; row: { label: string; value: string }; index: number; total: number; highlight?: boolean }) {
   const valueSize = row.value.length <= 14 ? 110 : row.value.length <= 30 ? 84 : 62;
   return (
     <Layer>
@@ -233,7 +326,9 @@ function FactText({ th, row, index, total }: { th: Theme; row: { label: string; 
             {index + 1}/{total}
           </div>
         </div>
-        <div style={{ display: "flex", color: "white", lineHeight: 1.1, ...th.head(valueSize) }}>{row.value}</div>
+        <div style={{ display: "flex", flexWrap: "wrap", color: "white", lineHeight: 1.1, ...th.head(valueSize) }}>
+          {highlight ? splitNumbers(row.value).map((p, i) => <span key={i} style={{ display: "flex", whiteSpace: "pre", color: p.num ? th.accent : "white" }}>{p.text}</span>) : row.value}
+        </div>
       </div>
     </Layer>
   );
@@ -403,38 +498,53 @@ export async function renderReel(params: {
   // start/end: when the layer is on screen; fadeIn/rise: how it enters (seconds, px). The classic hook is on from the first frame.
   const texts: { node: ReactElement; start: number; end: number; fadeIn: number; rise: number }[] = [];
   let t = 0;
+  let layoutScore: ReelScore | null = null;
   if (animateHook) {
-    // Animated hook (hookMotion.ts): the label and bar fade in, then the headline builds word by word, each word rising into place.
+    // Animated hook (hookMotion.ts): the hero element is on from the first frame, then the headline builds word by word, each word rising into place.
     const words = params.content.hook.split(/\s+/).filter(Boolean);
     const shown = words.length > 10 ? [...words.slice(0, 9), words.slice(9).join(" ")] : words;
     const key = keyWordIndex(shown);
-    const wordsDone = WORD_START + (shown.length - 1) * WORD_GAP + 0.3;
-    const hookEnd = Math.max(timing.hook, wordsDone + 0.8);
-    texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={-1} scale={(opening === "fast" ? FAST_HOOK_SCALE : 1) * (graphic ? 1.25 : 1)} />, start: 0, end: hookEnd, fadeIn: 0.2, rise: 0 });
-    shown.forEach((_, k) => texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={k} scale={(opening === "fast" ? FAST_HOOK_SCALE : 1) * (graphic ? 1.25 : 1)} />, start: WORD_START + k * WORD_GAP, end: hookEnd, fadeIn: 0.18, rise: 34 }));
-    t = hookEnd;
+    // Hook layouts (hookLayout.ts), by story type, for every animated-hook reel, with or without a photo: a known score -> badges and score
+    // first; a question; a plain number -> the number big; else the headline large. Over a photo the block sits lower, over the shaded part.
+    const choice = chooseHookLayout({ hook: params.content.hook, hasScore: Boolean(params.score) });
+    layoutScore = choice.layout === "score" ? params.score ?? null : null;
+    const photoMode = !graphic;
+    const heroTop = photoMode ? 760 : 450;
+    const zoneByLayout: Record<HookLayout, { top: number; size: number; keyColor?: string }> = photoMode
+      ? { number: { top: 1090, size: 70 }, question: { top: 820, size: 100, keyColor: "#ffd166" }, score: { top: 1090, size: 64 }, headline: { top: 880, size: 96 } }
+      : { number: { top: 960, size: 84 }, question: { top: 520, size: 118, keyColor: "#ffd166" }, score: { top: 960, size: 74 }, headline: { top: 560, size: 110 } };
+    const zone: HookZone = { ...zoneByLayout[choice.layout], shadow: photoMode };
+    const startAt = choice.layout === "number" || choice.layout === "score" ? 0.1 : 0.05;
+    const hookDone = startAt + (shown.length - 1) * WORD_GAP + 0.3;
+    const hookEndLayout = Math.max(timing.hook, hookDone + 0.8);
+    const hookSceneEnd = hookEndLayout;
+    texts.push({ node: <HeroLayer th={th} layout={choice.layout} hero={choice.hero} score={layoutScore} top={heroTop} scrim={photoMode && (choice.layout === "number" || choice.layout === "score")} compact={photoMode} sportLabel={sportLabel} eyebrow={params.content.eyebrow} />, start: 0, end: hookSceneEnd, fadeIn: 0, rise: 0 });
+    shown.forEach((_, k) => texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={k} scale={1} zone={zone} />, start: startAt + k * WORD_GAP, end: hookSceneEnd, fadeIn: 0.18, rise: 34 }));
+    const pill = choice.layout === "question" ? openLoopText(facts.length) : null;
+    if (pill) texts.push({ node: <OpenLoopPill th={th} text={pill} top={photoMode ? 1130 : 1080} />, start: 1.3, end: hookSceneEnd, fadeIn: 0.3, rise: 40 });
+    t = hookSceneEnd;
   } else {
     texts.push({ node: <HookText th={th} content={params.content} scale={opening === "fast" ? FAST_HOOK_SCALE : 1} sportLabel={sportLabel} />, start: 0, end: timing.hook, fadeIn: 0, rise: 0 });
     t = timing.hook;
   }
   facts.forEach((row, i) => {
-    texts.push({ node: <FactText th={th} row={row} index={i} total={facts.length} />, start: t, end: t + timing.fact, fadeIn: TRANS_IN, rise: SLIDE });
+    texts.push({ node: <FactText th={th} row={row} index={i} total={facts.length} highlight={animateHook} />, start: t, end: t + timing.fact, fadeIn: TRANS_IN, rise: SLIDE });
     t += timing.fact;
   });
   const endStart = t;
-  const total = endStart + END_SECONDS;
+  const total = endStart + (params.youtube ? END_SECONDS_YOUTUBE : END_SECONDS);
   const frames = Math.round(total * FPS);
 
   const workDir = params.keepScenesDir ?? (await mkdtemp(join(tmpdir(), "reel-")));
   try {
     const photoPath = join(workDir, "photo");
     const musicPath = params.musicPath ?? join(workDir, "music.wav");
-    if (!params.musicPath) await writeFile(musicPath, generateReelMusic(total, params.musicStyle));
+    if (!params.musicPath) await writeFile(musicPath, generateReelMusic(total, params.musicStyle, params.youtube && animateHook ? { swooshAt: [0.05] } : {}));
     const chromePath = join(workDir, "layer-chrome.png");
     const textPaths = texts.map((_, i) => join(workDir, `layer-text-${i + 1}.png`));
     const endPath = join(workDir, "layer-end.png");
     const [chromePng, endPng, ...textPngs] = await Promise.all([
-      renderLayer(<ChromeLayer th={th} credit={params.language === "es" ? params.credit?.replace(/^Photo via /i, "Foto vía ").replace(/^Photo: /i, "Foto: ") : params.credit} darkFrom={darkFrom} darkTo={darkTo} darkEnd={darkEnd} portrait={Boolean(cropped)} score={params.score} />, fonts),
+      renderLayer(<ChromeLayer th={th} credit={params.language === "es" ? params.credit?.replace(/^Photo via /i, "Foto vía ").replace(/^Photo: /i, "Foto: ") : params.credit} darkFrom={darkFrom} darkTo={darkTo} darkEnd={darkEnd} portrait={Boolean(cropped)} score={animateHook ? null : params.score} />, fonts),
       renderLayer(<EndCard th={th} language={params.language} followHandle={params.followHandle} youtube={params.youtube} />, fonts),
       ...texts.map((s) => renderLayer(s.node, fonts)),
     ]);

@@ -1,8 +1,8 @@
 // Which reel version each destination gets (2026-11-07, set by the owner):
 //  - A story with no photo of its own (only our branded card) gets the graphic reel on every destination: drawn sport art behind the
 //    animated hook, instead of the card dropped in as a photo.
-//  - A story with a photo keeps the photo reel, and its hook is animated (words build one by one) on Instagram, on the topic ("sub")
-//    Pages and on YouTube. The main Facebook Page keeps the classic photo reel.
+//  - A story with a photo keeps the photo reel, and its hook is animated on every destination - Instagram, every Facebook Page (main and
+//    topic) and YouTube (owner, 2026-11-07: "all Instagram, Facebook, YouTube"). The hook layout is chosen by the story (hookLayout.ts).
 // Instagram and Facebook share one render per version, so a call renders at most one motion version and one classic version.
 
 export interface ReelPlanInput {
@@ -29,7 +29,7 @@ export function planReels(i: ReelPlanInput): ReelPlan {
   const graphic = i.noPhoto && (i.graphicsOn ?? true);
   const motionOn = i.motionOn ?? true;
   const instagramMotion = graphic || motionOn;
-  const facebookMotion = graphic || (motionOn && i.isTopicPage);
+  const facebookMotion = graphic || motionOn;
   const youtubeMotion = graphic || motionOn;
   return {
     graphic,
