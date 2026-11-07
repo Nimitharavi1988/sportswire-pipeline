@@ -8,6 +8,7 @@ import type { ReactElement } from "react";
 import type { PosterContent } from "@/lib/ingestion/commentary";
 import { categoryChipStyle } from "@/lib/categoryDisplay";
 import { loadHeroImageDataUri, BRAND_GREEN } from "./instagramPoster";
+import { fitFact, wordsOf } from "./factFit";
 import { generateReelMusic, type ReelMusicStyle } from "./reelMusic";
 import { REEL_THEMES, DEFAULT_REEL_THEME, REEL_FONTS, DEFAULT_REEL_FONT, type ReelTheme, type ReelFont } from "./reelThemes";
 import { categoryLabelEs } from "../i18n/es";
@@ -60,6 +61,9 @@ const SS = 2;
 const TRANS_IN = 0.3;
 const TRANS_OUT = 0.22;
 const OVERLAP = 0.05;
+// The animated hook dissolves slowly instead of cutting: it fades over HOOK_DISSOLVE seconds, the last HOOK_LINGER of them under the first fact.
+const HOOK_DISSOLVE = 0.7;
+const HOOK_LINGER = 0.25;
 const SLIDE = 50;
 const DRIFT = 30;
 // Kept quick (~12s, was ~14s): short reels get watched through and replayed. The hook and fact lengths are in
@@ -256,6 +260,16 @@ function TagRow({ th, sportLabel, eyebrow }: { th: Theme; sportLabel: string | n
   );
 }
 
+// The headline kept small under the wordmark while the facts play, so a viewer arriving mid-reel still sees what it is about.
+function PinnedHeadline({ th, text }: { th: Theme; text: string }) {
+  return (
+    <div style={{ position: "absolute", top: 262, left: 60, width: 960, display: "flex", alignItems: "center" }}>
+      <div style={{ display: "flex", width: 8, height: 40, borderRadius: 4, background: th.accent, marginRight: 16 }} />
+      <div style={{ display: "flex", flex: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", color: "white", fontSize: 36, fontWeight: 700, textShadow: "0 2px 8px rgba(0,0,0,0.75)" }}>{text}</div>
+    </div>
+  );
+}
+
 // The hero element of a hook layout: a big number ("42 POINTS") or the two team badges around the score. Shown from the first frame.
 function HeroLayer({ th, layout, hero, score, top, scrim, compact, sportLabel, eyebrow }: { th: Theme; layout: HookLayout; hero: HookHero | null; score: ReelScore | null; top: number; scrim: boolean; compact: boolean; sportLabel: string | null; eyebrow: string }) {
   const shadow = "0 4px 26px rgba(0,0,0,0.75)";
@@ -315,7 +329,7 @@ export function splitNumbers(value: string): { text: string; num: boolean }[] {
 }
 
 function FactText({ th, row, index, total, highlight = false }: { th: Theme; row: { label: string; value: string }; index: number; total: number; highlight?: boolean }) {
-  const valueSize = row.value.length <= 14 ? 110 : row.value.length <= 30 ? 84 : 62;
+  const { size: valueSize, text: valueText } = fitFact(row.value);
   return (
     <Layer>
       <div style={{ display: "flex", flex: 1 }} />
@@ -327,7 +341,7 @@ function FactText({ th, row, index, total, highlight = false }: { th: Theme; row
           </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", color: "white", lineHeight: 1.1, ...th.head(valueSize) }}>
-          {highlight ? splitNumbers(row.value).map((p, i) => <span key={i} style={{ display: "flex", whiteSpace: "pre", color: p.num ? th.accent : "white" }}>{p.text}</span>) : row.value}
+          {highlight ? wordsOf(splitNumbers(valueText)).map((w, i) => <div key={i} style={{ display: "flex", whiteSpace: "pre", marginRight: Math.round(valueSize * 0.26) }}>{w.map((p, j) => <span key={j} style={{ color: p.num ? th.accent : "white" }}>{p.text}</span>)}</div>) : valueText}
         </div>
       </div>
     </Layer>
@@ -496,9 +510,10 @@ export async function renderReel(params: {
   // Text scenes back to back; the end card starts where the last fact ends.
   const sportLabel = params.language === "es" && params.category ? categoryLabelEs(params.category.split("/")[0]) : sport?.label ?? null;
   // start/end: when the layer is on screen; fadeIn/rise: how it enters (seconds, px). The classic hook is on from the first frame.
-  const texts: { node: ReactElement; start: number; end: number; fadeIn: number; rise: number }[] = [];
+  const texts: { node: ReactElement; start: number; end: number; fadeIn: number; rise: number; fadeOut?: number }[] = [];
   let t = 0;
   let layoutScore: ReelScore | null = null;
+  let pinnedAt: number | null = null;
   if (animateHook) {
     // Animated hook (hookMotion.ts): the hero element is on from the first frame, then the headline builds word by word, each word rising into place.
     const words = params.content.hook.split(/\s+/).filter(Boolean);
@@ -518,11 +533,12 @@ export async function renderReel(params: {
     const hookDone = startAt + (shown.length - 1) * WORD_GAP + 0.3;
     const hookEndLayout = Math.max(timing.hook, hookDone + 0.8);
     const hookSceneEnd = hookEndLayout;
-    texts.push({ node: <HeroLayer th={th} layout={choice.layout} hero={choice.hero} score={layoutScore} top={heroTop} scrim={photoMode && (choice.layout === "number" || choice.layout === "score")} compact={photoMode} sportLabel={sportLabel} eyebrow={params.content.eyebrow} />, start: 0, end: hookSceneEnd, fadeIn: 0, rise: 0 });
-    shown.forEach((_, k) => texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={k} scale={1} zone={zone} />, start: startAt + k * WORD_GAP, end: hookSceneEnd, fadeIn: 0.18, rise: 34 }));
+    texts.push({ node: <HeroLayer th={th} layout={choice.layout} hero={choice.hero} score={layoutScore} top={heroTop} scrim={photoMode && (choice.layout === "number" || choice.layout === "score")} compact={photoMode} sportLabel={sportLabel} eyebrow={params.content.eyebrow} />, start: 0, end: hookSceneEnd + HOOK_LINGER, fadeIn: 0, rise: 0, fadeOut: HOOK_DISSOLVE });
+    shown.forEach((_, k) => texts.push({ node: <HookWordsLayer th={th} content={params.content} sportLabel={sportLabel} words={shown} key_={key} only={k} scale={1} zone={zone} />, start: startAt + k * WORD_GAP, end: hookSceneEnd + HOOK_LINGER, fadeIn: 0.18, rise: 34, fadeOut: HOOK_DISSOLVE }));
     const pill = choice.layout === "question" ? openLoopText(facts.length) : null;
-    if (pill) texts.push({ node: <OpenLoopPill th={th} text={pill} top={photoMode ? 1130 : 1080} />, start: 1.3, end: hookSceneEnd, fadeIn: 0.3, rise: 40 });
+    if (pill) texts.push({ node: <OpenLoopPill th={th} text={pill} top={photoMode ? 1130 : 1080} />, start: 1.3, end: hookSceneEnd + HOOK_LINGER, fadeIn: 0.3, rise: 40, fadeOut: HOOK_DISSOLVE });
     t = hookSceneEnd;
+    pinnedAt = hookSceneEnd + 0.15;
   } else {
     texts.push({ node: <HookText th={th} content={params.content} scale={opening === "fast" ? FAST_HOOK_SCALE : 1} sportLabel={sportLabel} />, start: 0, end: timing.hook, fadeIn: 0, rise: 0 });
     t = timing.hook;
@@ -532,6 +548,8 @@ export async function renderReel(params: {
     t += timing.fact;
   });
   const endStart = t;
+  // The headline stays small on screen through the facts (animated-hook reels), fading in as the hook dissolves.
+  if (pinnedAt !== null && facts.length > 0) texts.push({ node: <PinnedHeadline th={th} text={params.content.hook} />, start: pinnedAt, end: endStart, fadeIn: 0.4, rise: 0 });
   const total = endStart + (params.youtube ? END_SECONDS_YOUTUBE : END_SECONDS);
   const frames = Math.round(total * FPS);
 
@@ -612,11 +630,12 @@ export async function renderReel(params: {
       // A fact fades in OVERLAP early, over the previous scene's fade-out; a hook layer starts exactly on its time.
       const inAt = s.fadeIn === TRANS_IN && s.rise === SLIDE ? start - OVERLAP : start;
       const fadeIn = s.fadeIn > 0 ? `fade=t=in:st=${f(inAt)}:d=${s.fadeIn}:alpha=1,` : "";
-      filters.push(`[${2 + i}:v]format=rgba,${fadeIn}fade=t=out:st=${f(end - TRANS_OUT)}:d=${TRANS_OUT}:alpha=1[t${i}]`);
+      filters.push(`[${2 + i}:v]format=rgba,${fadeIn}fade=t=out:st=${f(end - (s.fadeOut ?? TRANS_OUT))}:d=${s.fadeOut ?? TRANS_OUT}:alpha=1[t${i}]`);
       // Eased slide: up into place while entering (the hook is already in
       // place at t=0), drifting up while leaving.
       const rise = s.rise > 0 ? `${s.rise}*pow(1-clip((t-${f(inAt)})/${s.fadeIn}\\,0\\,1)\\,2)` : "0";
-      const drift = `${DRIFT}*(1-pow(1-clip((t-${f(end - TRANS_OUT)})/${TRANS_OUT}\\,0\\,1)\\,2))`;
+      const fo = s.fadeOut ?? TRANS_OUT;
+      const drift = `${DRIFT}*(1-pow(1-clip((t-${f(end - fo)})/${fo}\\,0\\,1)\\,2))`;
       filters.push(`[${last}][t${i}]overlay=x=0:y='${rise}-${drift}':enable='between(t\\,${f(inAt)}\\,${f(end)})'[v${i + 1}]`);
       last = `v${i + 1}`;
     });
