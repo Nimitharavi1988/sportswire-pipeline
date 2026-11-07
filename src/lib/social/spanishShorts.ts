@@ -22,7 +22,7 @@ import { logDecision } from "./decisionLog";
 import { spanishShortScore, shortFreshEnough } from "./spanishShortsRank";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
 import { isStarStory, reelIsFresh, reelMaxAgeHours } from "./freshness";
-import { youtubeConfigured, youtubeSlotOpen, maxShortsPerDayFor, minGapMinutes } from "./youtube";
+import { youtubeConfigured, youtubeSlotOpen, spanishShortsHourOpen, maxShortsPerDayFor, minGapMinutes } from "./youtube";
 
 const DESTINATION = `${SPANISH_PAGE.key}-reel`;
 // Stories this old are only looked at for Messi/Ronaldo (the age limit exempts them); everyone else is bound by the Page's reel age limit.
@@ -33,6 +33,8 @@ const MAX_ATTEMPTS = 2;
 
 export async function postSpanishShorts(now: Date = new Date()): Promise<void> {
   if (!spanishPageEnabled() || !youtubeConfigured("es")) return;
+  // Only in the hours its Shorts get views (youtube.ts spanishShortsHours): the pacing below then spreads the day's cap over them.
+  if (!spanishShortsHourOpen(now)) return;
   try {
     // Pacing: the Spanish channel's own daily cap (youtube.ts maxShortsPerDayFor) and the usual gap, counted on the Spanish channel only.
     const recent = await db.select({ at: socialPost.postedAt }).from(socialPost)

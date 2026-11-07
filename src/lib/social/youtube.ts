@@ -31,6 +31,23 @@ export function youtubeSlotOpen(postedLast24h: number, lastPostedAt: Date | null
   if (lastPostedAt && now.getTime() - lastPostedAt.getTime() < minGapMin * 60_000) return false;
   return true;
 }
+// The hours (UTC) the Spanish channel posts Shorts (2026-11-07): its Shorts published 00:00-11:59 UTC got a median of 27-58 views in the first
+// day, those published 12:00-23:59 UTC got 4-12 (48 of 190 under 20 views early, 82% late). Format "0-12" = from hour 0 up to, not including,
+// hour 12; override with YOUTUBE_ES_HOURS_UTC, "0-24" turns the limit off. The English channel posts whenever its sport pacing allows.
+export function spanishShortsHours(env: Record<string, string | undefined> = process.env): { start: number; end: number } {
+  const m = /^\s*(\d{1,2})\s*-\s*(\d{1,2})\s*$/.exec(env.YOUTUBE_ES_HOURS_UTC ?? "");
+  if (m) {
+    const [start, end] = [Number(m[1]), Number(m[2])];
+    if (start >= 0 && start < end && end <= 24) return { start, end };
+  }
+  return { start: 0, end: 12 };
+}
+export function spanishShortsHourOpen(now: Date, env: Record<string, string | undefined> = process.env): boolean {
+  const { start, end } = spanishShortsHours(env);
+  const h = now.getUTCHours();
+  return h >= start && h < end;
+}
+
 // A Short's title stays under 60 characters (2026-10-29, YouTube rules): it leads with the names and the comparison, and
 // the rest is cut at a word. The older decorated-title test keeps its own 100-character limit (DECORATED_TITLE_MAX).
 const TITLE_MAX = 60;

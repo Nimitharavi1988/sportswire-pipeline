@@ -31,7 +31,7 @@ import { logDecision, setDecisionContext, clearDecisionContext, decisionContextF
 import { reelFeatures } from "./decisionFeatures";
 import { openingFor } from "./reelOpening";
 import { storyTypeOf, STYLES_BY_TYPE } from "./hookStyles";
-import { youtubeConfigured, uploadShort, shortsTitleFor, shortsDescription, shortsTags, youtubeSlotOpen, uploadLimitPauseActive, UPLOAD_LIMIT_MESSAGE, UPLOAD_LIMIT_PAUSE_HOURS, maxShortsPerDayFor, minGapMinutes, youtubeSportAllowed, priorityReserve, titleVariantFor, decorateShortsTitle } from "./youtube";
+import { youtubeConfigured, uploadShort, shortsTitleFor, shortsDescription, shortsTags, youtubeSlotOpen, spanishShortsHourOpen, uploadLimitPauseActive, UPLOAD_LIMIT_MESSAGE, UPLOAD_LIMIT_PAUSE_HOURS, maxShortsPerDayFor, minGapMinutes, youtubeSportAllowed, priorityReserve, titleVariantFor, decorateShortsTitle } from "./youtube";
 
 // Posts a story as a Reel to Instagram and the main Facebook Page. Runs in
 // the post-reel GitHub Actions job only (renderReel needs plain Node).
@@ -384,6 +384,7 @@ export async function postReel(
   // Paced (youtube.ts): a daily cap and a minimum gap since the last Short, per channel.
   let needYouTube = Boolean(opts.youtube) && ytChannel !== null && youtubeConfigured(ytChannel)
     && !existing.some((p) => p.platform === "youtube" && (ytChannel === "es" ? p.destination === ytKey : p.destination !== spanishYtKey));
+  if (needYouTube && ytChannel === "es" && !spanishShortsHourOpen(new Date())) { needYouTube = false; whySkipped.push("youtube timing: outside the Spanish channel's hours"); }
   if (needYouTube) {
     const [{ value: lastDay, last }] = await db.select({ value: count(), last: max(socialPostTable.postedAt) }).from(socialPostTable)
       .where(and(eq(socialPostTable.platform, "youtube"), ytChannel === "es" ? eq(socialPostTable.destination, spanishYtKey) : ne(socialPostTable.destination, spanishYtKey), eq(socialPostTable.status, "posted"), gte(socialPostTable.postedAt, new Date(Date.now() - 24 * 3600 * 1000))));
