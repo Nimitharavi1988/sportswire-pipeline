@@ -112,6 +112,15 @@ export function photoFirst<T extends { heroImageUrl: string | null; homeCrestUrl
   return [...head, ...deferred, ...rest];
 }
 
+// How much a story's social ranking is kept when its picture is only one of our cards (2026-11-08): a card in a link post's preview looks like
+// stock, and about a third of the Page's link posts carried one. Soft, like the other ranking multipliers: a big card story still goes out, but a
+// photo story of similar weight goes first. Nothing is cut: link posts still fill the Page's slots.
+export const CARD_ONLY_SOCIAL_MULTIPLIER = 0.5;
+export function cardOnlyMultiplier(a: { heroImageUrl?: string | null; homeCrestUrl?: string | null }): number {
+  if (a.heroImageUrl === undefined) return 1; // the picture is not known for this candidate
+  return hasRealImage({ heroImageUrl: a.heroImageUrl ?? null, homeCrestUrl: a.homeCrestUrl ?? null }) ? 1 : CARD_ONLY_SOCIAL_MULTIPLIER;
+}
+
 export function isAutoApprovable(article: {
   body: string | null;
   heroImageUrl: string | null;

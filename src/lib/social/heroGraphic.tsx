@@ -66,10 +66,10 @@ function fieldArt(sport: string, cx: number, cy: number, s: number, op: number):
   }
 }
 
-async function backgroundDataUri(color: string, seed: string, sport: string, label: string, w: number, h: number): Promise<string> {
+async function backgroundDataUri(color: string, seed: string, sport: string, label: string, w: number, h: number, styleOverride?: number): Promise<string> {
   const hv = hash(seed);
   const rnd = (n: number) => ((hv >>> (n * 3)) % 1000) / 1000;
-  const style = hv % HERO_STYLE_COUNT;
+  const style = styleOverride ?? hv % HERO_STYLE_COUNT;
   const c1 = mix(color, PANEL, 0.3), c2 = mix(color, PANEL, 0.9), cLight = mix(color, "#ffffff", 0.18);
   const minSide = Math.min(w, h);
   const scale = (Math.max(w, h) * (w > h ? 0.95 : 1.0)) / 900;
@@ -101,10 +101,12 @@ async function backgroundDataUri(color: string, seed: string, sport: string, lab
 }
 
 // Background art only (no text): used behind the reel and poster text when a story has no usable photo.
-export async function heroBackgroundJpeg(seed: string, category: string, w: number, h: number): Promise<Buffer> {
+// colorOverride: a base colour instead of the sport's own, and styleOverride: one of the six styles instead of the seed's (the art cards for link
+// posts and sport pages are tinted by story kind and use chosen styles, scripts/makeArtCards.ts).
+export async function heroBackgroundJpeg(seed: string, category: string, w: number, h: number, colorOverride?: string, styleOverride?: number): Promise<Buffer> {
   const sport = category.split("/")[0];
   const chip = categoryChipStyle(sport);
-  const uri = await backgroundDataUri(chip.color, seed, sport, chip.label.toUpperCase(), w, h);
+  const uri = await backgroundDataUri(colorOverride ?? chip.color, seed, sport, chip.label.toUpperCase(), w, h, styleOverride);
   return sharp(Buffer.from(uri.slice(uri.indexOf(",") + 1), "base64")).jpeg({ quality: 90 }).toBuffer();
 }
 

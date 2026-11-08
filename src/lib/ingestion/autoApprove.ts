@@ -24,11 +24,11 @@ import { sendPushToAllSubscribers } from "../push";
 import { pushIsConfigured } from "../pushConfig";
 import { isSimilarToAny } from "../titleSimilarity";
 import { orderForVariety } from "../social/reelVariety";
-import { cardAllowedFor, cardUrlFor, fallbackCardCategories, isFallbackCard, isNoPhotoRejection, cardWaitMinutes, isBigStory, FALLBACK_CARD_AFTER_MINUTES, REVIVE_WINDOW_HOURS, UPGRADE_WINDOW_HOURS, UPGRADE_RETRY_HOURS, MAX_UPGRADES_PER_RUN } from "../fallbackCards";
+import { cardAllowedFor, cardUrlFor, fallbackCardCategories, isFallbackCard, isNoPhotoRejection, cardWaitMinutes, isBigStory, cardNeedsRefresh, FALLBACK_CARD_AFTER_MINUTES, REFRESH_WINDOW_HOURS, REVIVE_WINDOW_HOURS, UPGRADE_WINDOW_HOURS, UPGRADE_RETRY_HOURS, MAX_UPGRADES_PER_RUN } from "../fallbackCards";
 import { fetchPersonPhoto, sportSearchHint, photoLookupSummary, loadPhotoCache, savePhotoCache, markTried, wasTriedRecently } from "./wikimediaImages";
 import { primaryTrackedPlayerIn } from "../players";
 import { venuePhotoFor, isVenueFilePhoto } from "../venuePhotos";
-import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, hasUsableImage, isAutoApprovable, isHockeyNewsSyndicated } from "../contentQuality";
+import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, hasUsableImage, isAutoApprovable, isHockeyNewsSyndicated, cardOnlyMultiplier } from "../contentQuality";
 
 // Runs as a follow-up step right after runIngest.ts in the same GitHub
 // Actions job — everything reaching "pending_review" has already passed
@@ -312,7 +312,7 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
   // doesn't already have a posted/queued row for that platform, so the
   // pacing logic below actually has enough real candidates to hit its
   // per-run target most runs. Runs even when toApprove is empty.
-  type SocialCandidate = { id: string; slug: string; title: string; trendingScore: number; category: string; sourceName: string; publishedAt?: Date | null };
+  type SocialCandidate = { id: string; slug: string; title: string; trendingScore: number; category: string; sourceName: string; publishedAt?: Date | null; heroImageUrl?: string | null; homeCrestUrl?: string | null };
   // A post needs a real picture; match rows can publish without one (see
   // isAutoApprovable), so the image bar is applied here for social.
   const postable = (a: { heroImageUrl: string | null; homeCrestUrl: string | null }) => hasUsableImage(a);
@@ -369,6 +369,7 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
   const postableStory = (a: { title: string }) => !isPromotional(a.title);
   const freshCandidates: SocialCandidate[] = toApprove.filter((a) => postable(a) && postableStory(a)).map((a) => ({
     id: a.id, slug: a.slug, title: a.title, trendingScore: a.trendingScore, category: a.category, sourceName: a.sourceName, publishedAt: a.publishedAt,
+    heroImageUrl: a.heroImageUrl, homeCrestUrl: a.homeCrestUrl,
   }));
   const freshIds = new Set(freshCandidates.map((a) => a.id));
   const backlogExcludingFresh = backlogPool.filter((a) => !freshIds.has(a.id) && postable(a) && postableStory(a));
@@ -414,13 +415,15 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
     const matchDay = matchDayMultiplier(a.title, matchDayFixtures, now);
     const baseFresh = freshnessMultiplier(a.publishedAt, now, a.title);
     const fresh = (matchDay >= BOTH_SIDES_MULTIPLIER ? Math.max(baseFresh, MATCH_DAY_FRESHNESS_FLOOR) : baseFresh) * matchDay;
+    // A story with only a card for its picture ranks lower (contentQuality.ts cardOnlyMultiplier), so photo stories fill the Page's slots first.
+    const picture = cardOnlyMultiplier(a);
     if (a.category === "american-football" && isInternationalAudienceWindow(now)) {
-      return a.trendingScore * AMERICAN_FOOTBALL_INTERNATIONAL_WINDOW_MULTIPLIER * fresh;
+      return a.trendingScore * AMERICAN_FOOTBALL_INTERNATIONAL_WINDOW_MULTIPLIER * fresh * picture;
     }
     if (a.category === "cricket" && isUsAudienceHours(now)) {
-      return a.trendingScore * CRICKET_US_HOURS_MULTIPLIER * fresh;
+      return a.trendingScore * CRICKET_US_HOURS_MULTIPLIER * fresh * picture;
     }
-    return a.trendingScore * fresh;
+    return a.trendingScore * fresh * picture;
   }
 
   function selectTopN(n: number, byTrending: SocialCandidate[], eligible: SocialCandidate[], recentTitles: string[], reserve = true): SocialCandidate[] {
@@ -806,6 +809,36 @@ export async function reviveNoPhotoRejects(): Promise<number> {
   return ids.length;
 }
 
+// Cards assigned before a card rule existed (the kind, flag and venue rules came on 2026-11-08, after about 130 stories already had a plain card) are
+// chosen again for the latest stories, so what the site shows follows today's rules. A story whose card is already what the rules give now is left
+// alone, so this changes each story at most once per rule change. A venue file photo, or a flag or kind card, replaces a plain card; a real photo is never touched.
+export async function refreshCards(): Promise<number> {
+  if (fallbackCardCategories().length === 0) return 0;
+  const since = new Date(Date.now() - REFRESH_WINDOW_HOURS * 60 * 60 * 1000);
+  const rows = await db.select({ id: article.id, title: article.title, category: article.category, venue: article.venue, sourceName: article.sourceName, heroImageUrl: article.heroImageUrl })
+    .from(article)
+    .where(and(inArray(article.status, ["pending_review", "published"]), gte(article.createdAt, since), like(article.heroImageUrl, "%/cards/%")))
+    .orderBy(desc(article.createdAt))
+    .limit(500);
+  const site = process.env.SITE_URL?.startsWith("https://") ? process.env.SITE_URL : undefined;
+  let changed = 0;
+  for (const a of rows) {
+    if (!isFallbackCard(a.heroImageUrl) || isMatchDataSource(a.sourceName) || !cardAllowedFor(a.category)) continue;
+    const venuePhoto = venuePhotoFor(a.category, a.venue, a.title);
+    if (venuePhoto) {
+      await db.update(article).set({ heroImageUrl: venuePhoto.url, heroImageCredit: venuePhoto.credit, heroImageCreditUrl: venuePhoto.creditUrl, updatedAt: new Date() }).where(eq(article.id, a.id));
+      changed++;
+      continue;
+    }
+    const wanted = cardUrlFor(a.category, a.id, site, a.title);
+    if (cardNeedsRefresh(a.heroImageUrl, wanted)) {
+      await db.update(article).set({ heroImageUrl: wanted, updatedAt: new Date() }).where(eq(article.id, a.id));
+      changed++;
+    }
+  }
+  return changed;
+}
+
 // A story that has only a card (or a venue file photo) but names a tracked player gets another try at that player's Wikimedia photo (fallbackCards.ts: UPGRADE_*). The first
 // lookup at ingestion can fail for a reason that passes (Wikimedia backing us off, 2026-11-07), and the card is only the fallback. A try that finds
 // nothing is marked (wikimediaImages.ts markTried), so the same story is not tried again for UPGRADE_RETRY_HOURS; updatedAt is not touched, because it is
@@ -897,6 +930,11 @@ if (require.main === module) {
       if (cards) console.log(`Fallback cards: ${cards} story(ies) with no real photo after ${FALLBACK_CARD_AFTER_MINUTES} min (big stories at once) got a branded card.`);
     })
     .catch((err) => console.error("Fallback cards failed (continuing):", err))
+    .then(() => refreshCards())
+    .then((refreshed) => {
+      if (refreshed) console.log(`Card refresh: ${refreshed} recent card stor${refreshed === 1 ? "y" : "ies"} now follow the current card rules (venue photo, flags, kind).`);
+    })
+    .catch((err) => console.error("Card refresh failed (continuing):", err))
     .then(() => upgradeCardPhotos())
     .then(({ tried, upgraded }) => {
       if (tried) console.log(`Photo upgrade: ${upgraded} of ${tried} card stories got a real photo of the player they name.`);

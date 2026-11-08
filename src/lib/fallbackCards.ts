@@ -17,6 +17,15 @@ export const FALLBACK_CARD_BIG_AFTER_MINUTES = 0;
 export const BIG_TRENDING_SCORE = 35;
 export const isBigStory = (highlightWorthy: boolean, trendingScore: number | null | undefined): boolean => highlightWorthy || (trendingScore ?? 0) >= BIG_TRENDING_SCORE;
 
+// The latest stories that have a card are checked again against the current card rules (autoApprove.ts refreshCards).
+export const REFRESH_WINDOW_HOURS = 72;
+// Whether a story's card should change: the card the rules give now is a different file (the host part of the URL does not count).
+export function cardNeedsRefresh(current: string | null | undefined, wanted: string): boolean {
+  if (!current) return true;
+  const path = (u: string): string => { try { return new URL(u, SITE).pathname; } catch { return u; } };
+  return path(current) !== path(wanted);
+}
+
 // How long this story waits for a real photo before its card, in minutes.
 export const cardWaitMinutes = (big: boolean): number => (big ? FALLBACK_CARD_BIG_AFTER_MINUTES : FALLBACK_CARD_AFTER_MINUTES);
 
@@ -91,6 +100,8 @@ export function flagCardUrl(pair: [string, string], siteUrl: string = SITE): str
   return `${siteUrl}${CARD_DIR}flags-${nationSlug(pair[0])}-vs-${nationSlug(pair[1])}-1.png`;
 }
 
+// The plain and kind cards are JPEG art cards (scripts/makeArtCards.ts, from 2026-11-08); the first plain and kind cards were PNG and stay in public/cards for
+// the stories that already use them. The flag cards are PNG.
 // A stable variant per story, so it never changes on a later run. With the headline, a story that reads as a result, preview, injury and so on
 // gets that kind's card (colour and symbol); a cricket story naming two nations gets their flag pair first; anything else keeps the sport's plain card.
 export function cardUrlFor(category: string, articleId: string, siteUrl: string = SITE, title?: string): string {
@@ -100,8 +111,8 @@ export function cardUrlFor(category: string, articleId: string, siteUrl: string 
   const pair = title && sport === "cricket" ? flagPairFor(title) : null;
   if (pair) return flagCardUrl(pair, siteUrl);
   const kind = title ? cardKindFor(title) : null;
-  if (kind) return `${siteUrl}${CARD_DIR}${sport}-${kind}-${(h % KIND_VARIANTS) + 1}.png`;
-  return `${siteUrl}${CARD_DIR}${sport}-${(h % CARD_VARIANTS) + 1}.png`;
+  if (kind) return `${siteUrl}${CARD_DIR}${sport}-${kind}-${(h % KIND_VARIANTS) + 1}.jpg`;
+  return `${siteUrl}${CARD_DIR}${sport}-${(h % CARD_VARIANTS) + 1}.jpg`;
 }
 
 // True for one of our own cards (any site host, so a preview or local URL counts too).
@@ -109,7 +120,7 @@ export function isFallbackCard(url: string | null | undefined): boolean {
   if (!url) return false;
   try {
     const p = new URL(url).pathname;
-    return p.startsWith(CARD_DIR) && /^\/cards\/[a-z0-9-]+-\d\.png$/.test(p);
+    return p.startsWith(CARD_DIR) && /^\/cards\/[a-z0-9-]+-\d\.(png|jpg)$/.test(p);
   } catch {
     return false;
   }
