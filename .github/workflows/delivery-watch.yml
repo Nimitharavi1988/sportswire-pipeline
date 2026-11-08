@@ -21,7 +21,15 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # ffmpeg-static downloads its binary from GitHub during install; that download fails now and then (2026-11-08: 4 of 5 runs), so retry.
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3 4; do
+            npm ci && exit 0
+            echo "npm ci failed (attempt $attempt), retrying"
+            sleep $((attempt * 20))
+          done
+          exit 1
       - run: npx tsx scripts/deliveryWatch.ts
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
