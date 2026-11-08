@@ -78,7 +78,7 @@ let wikiBackoffUntil = 0;
 // What the person-photo lookups did in this process (2026-11-07, after most cricket stories ended with a card and nothing recorded why). Logged at the
 // end of each job (photoLookupSummary): found = a chosen photo, canonical = only the Wikipedia lead image, noPage = no page for the name, filtered =
 // photos existed but none passed the rules, noFreePhoto = the page has none with a free licence, rateLimited = Wikimedia was backing us off.
-export const photoStats = { found: 0, canonical: 0, noPage: 0, filtered: 0, noFreePhoto: 0, rateLimited: 0, failed: 0 };
+export const photoStats = { found: 0, canonical: 0, noPage: 0, filtered: 0, noFreePhoto: 0, rateLimited: 0, failed: 0, cached: 0 };
 export function photoLookupSummary(): string | null {
   const total = Object.values(photoStats).reduce((a, b) => a + b, 0);
   if (total === 0) return null;
@@ -86,7 +86,7 @@ export function photoLookupSummary(): string | null {
 }
 
 async function wikiFetch(url: string): Promise<any | null> {
-  if (Date.now() < wikiBackoffUntil) return null;
+  if (Date.now() < wikiBackoffUntil && !(await waitOutBackoff())) return null;
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
@@ -95,6 +95,7 @@ async function wikiFetch(url: string): Promise<any | null> {
         const retryAfter = Number(res.headers.get("retry-after"));
         const seconds = Number.isFinite(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 300) : 60;
         wikiBackoffUntil = Date.now() + seconds * 1000;
+        if (await waitOutBackoff()) continue;
         return null;
       }
       // A transient 5xx is retried rather than treated as a genuine
@@ -105,6 +106,61 @@ async function wikiFetch(url: string): Promise<any | null> {
     if (attempt < 2) await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
   }
   return null;
+}
+
+// ---- Waiting out a refusal, and a run-to-run cache (pipeline jobs, 2026-11-08) ----
+// The first run with the photo logging showed Wikimedia refusing most lookups from the GitHub runner (8 of 8 in the upgrade pass), and every refusal
+// used to lose all lookups for the next 1-5 minutes. Two changes, both off unless the job sets them, so the website's runtime is unchanged:
+//  - WIKIMEDIA_WAIT=1: a job waits out Wikimedia's Retry-After (at most WAIT_BUDGET_MS in total, shared by the parallel lookups) and tries again.
+//  - PHOTO_CACHE_FILE=<path>: lookups are remembered in a JSON file the workflow keeps between runs (actions/cache): a found photo for 7 days, a real
+//    "no photo" for 6 hours. A lookup that was refused is never remembered, in the file or in memory, since it says nothing about the person.
+const WAIT_BUDGET_MS = 150_000;
+let waitedMs = 0;
+let backoffWait: Promise<void> | null = null;
+async function waitOutBackoff(): Promise<boolean> {
+  if (process.env.WIKIMEDIA_WAIT !== "1") return false;
+  if (!backoffWait) {
+    const remaining = wikiBackoffUntil - Date.now();
+    if (remaining <= 0) return true;
+    if (waitedMs + remaining > WAIT_BUDGET_MS) return false;
+    waitedMs += remaining;
+    backoffWait = new Promise<void>((resolve) => setTimeout(() => { backoffWait = null; resolve(); }, remaining + 500));
+  }
+  await backoffWait;
+  return true;
+}
+
+export const photoCacheTtlMs = (found: boolean): number => (found ? 7 * 24 * 3600_000 : 6 * 3600_000);
+interface CacheEntry { v: StockImage | null; until: number }
+let fileCache: Map<string, CacheEntry> | null = null;
+let fileCacheDirty = false;
+
+export async function loadPhotoCache(): Promise<void> {
+  const path = process.env.PHOTO_CACHE_FILE;
+  if (!path) return;
+  fileCache = new Map();
+  try {
+    const { readFile } = await import("node:fs/promises");
+    const raw = JSON.parse(await readFile(path, "utf8")) as Record<string, CacheEntry>;
+    const now = Date.now();
+    for (const [k, e] of Object.entries(raw)) if (e && typeof e.until === "number" && e.until > now) fileCache.set(k, e);
+  } catch {
+    // no file yet, or unreadable: start empty
+  }
+}
+
+export async function savePhotoCache(): Promise<void> {
+  const path = process.env.PHOTO_CACHE_FILE;
+  if (!path || !fileCache || !fileCacheDirty) return;
+  try {
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    const { dirname } = await import("node:path");
+    await mkdir(dirname(path), { recursive: true });
+    await writeFile(path, JSON.stringify(Object.fromEntries(fileCache)));
+    fileCacheDirty = false;
+  } catch (err) {
+    console.warn("[photos] could not save the lookup cache:", err instanceof Error ? err.message : err);
+  }
 }
 
 function buildCredit(meta: any, fileName: string, kind: "Photo" | "Image"): { credit: string; creditUrl: string } | null {
@@ -508,6 +564,11 @@ export async function fetchPersonPhoto(personName: string, sportHint?: string, s
   const key = `${personName}|${sportHint ?? ""}|${seed ?? ""}`;
   const memo = photoMemo.get(key);
   if (memo && memo.expires > Date.now()) return memo.value;
+  const remembered = fileCache?.get(key);
+  if (remembered && remembered.until > Date.now()) {
+    photoStats.cached++;
+    return remembered.v;
+  }
 
   const edge = (globalThis as { caches?: { default?: Cache } }).caches?.default;
   const cacheReq = new Request(`https://photo-cache.internal/person?k=${encodeURIComponent(key)}`);
@@ -522,9 +583,16 @@ export async function fetchPersonPhoto(personName: string, sportHint?: string, s
     // cache unavailable — fall through to a live lookup
   }
 
+  const refusedBefore = photoStats.rateLimited + photoStats.failed;
   const value = await fetchPersonPhotoUncached(personName, sportHint, seed);
+  // A lookup Wikimedia refused (or that failed) says nothing about the person: it is returned but not remembered anywhere.
+  if (photoStats.rateLimited + photoStats.failed > refusedBefore) return value;
   const ttl = value ? PHOTO_TTL_S : PHOTO_MISS_TTL_S;
   photoMemo.set(key, { value, expires: Date.now() + Math.min(ttl, PHOTO_MEMO_TTL_S) * 1000 });
+  if (fileCache) {
+    fileCache.set(key, { v: value, until: Date.now() + photoCacheTtlMs(Boolean(value)) });
+    fileCacheDirty = true;
+  }
   try {
     await edge?.put(
       cacheReq,

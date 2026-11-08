@@ -45,7 +45,7 @@ const generateCommentary = (...args: Parameters<typeof generateCommentaryUntimed
 const generateMatchRecap = (...args: Parameters<typeof generateMatchRecapUntimed>) => timed("generateMatchRecap (Gemini)", () => generateMatchRecapUntimed(...args));
 const verifyCommentaryHasSubstance = (...args: Parameters<typeof verifyCommentaryHasSubstanceUntimed>) => timed("verifyCommentaryHasSubstance (Gemini)", () => verifyCommentaryHasSubstanceUntimed(...args));
 import { extractArticleContent, extractArticleContentDetailed } from "./articleTextExtractor";
-import { commonsFileKey, fetchPersonPhoto, photoLookupSummary, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
+import { commonsFileKey, fetchPersonPhoto, loadPhotoCache, photoLookupSummary, savePhotoCache, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
 import { isExcludedSource } from "../excludedSources";
 import { competitionFromSummary } from "../teamNames";
 import { MATCH_DATA_SOURCE_NAMES, isMatchDataSource, supersedes } from "../matchDataSources";
@@ -316,6 +316,7 @@ async function loadRecentPhotoUsage(): Promise<Map<string, number>> {
 
 export async function runIngest() {
   setPhotoUsage(await loadRecentPhotoUsage());
+  await loadPhotoCache();
   let [verticalRow] = await db.select().from(vertical).where(eq(vertical.name, "sports")).limit(1);
   if (!verticalRow) {
     [verticalRow] = await db.insert(vertical).values({ id: createId(), name: "sports" }).returning();
@@ -1107,6 +1108,7 @@ export async function runIngest() {
   await runPool(rawItems, itemConcurrency, (item) => [dedupeHashFor(item), ...keysFor(item)], processItem);
 
   logTimingSummary("ingest");
+  await savePhotoCache();
   const photoSummary = photoLookupSummary();
   if (photoSummary) console.log(photoSummary);
   if (thinSourceSkips > 0) console.log(`[ingest] ${thinSourceSkips} stories left unwritten: source text too thin or not about the headline (MIN_GROUNDING_CHARS=${minGroundingChars(process.env.MIN_GROUNDING_CHARS)}).`);

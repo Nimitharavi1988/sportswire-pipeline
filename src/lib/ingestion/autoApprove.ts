@@ -25,7 +25,7 @@ import { pushIsConfigured } from "../pushConfig";
 import { isSimilarToAny } from "../titleSimilarity";
 import { orderForVariety } from "../social/reelVariety";
 import { cardAllowedFor, cardUrlFor, fallbackCardCategories, isFallbackCard, isNoPhotoRejection, cardWaitMinutes, isBigStory, FALLBACK_CARD_AFTER_MINUTES, REVIVE_WINDOW_HOURS, UPGRADE_WINDOW_HOURS, UPGRADE_RETRY_HOURS, MAX_UPGRADES_PER_RUN } from "../fallbackCards";
-import { fetchPersonPhoto, sportSearchHint, photoLookupSummary } from "./wikimediaImages";
+import { fetchPersonPhoto, sportSearchHint, photoLookupSummary, loadPhotoCache, savePhotoCache } from "./wikimediaImages";
 import { primaryTrackedPlayerIn } from "../players";
 import { venuePhotoFor, isVenueFilePhoto } from "../venuePhotos";
 import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, hasUsableImage, isAutoApprovable, isHockeyNewsSyndicated } from "../contentQuality";
@@ -885,7 +885,8 @@ export async function rejectStaleNoBodyArticles(): Promise<number> {
 
 if (require.main === module) {
   // Branded cards for real stories with no photo go on first, so the approval below sees them (fallbackCards.ts; off unless FALLBACK_CARD_CATEGORIES is set).
-  reviveNoPhotoRejects()
+  loadPhotoCache()
+    .then(() => reviveNoPhotoRejects())
     .then((revived) => {
       if (revived) console.log(`Revived: ${revived} recent story(ies) rejected only for having no photo are back in the queue.`);
     })
@@ -907,6 +908,7 @@ if (require.main === module) {
       console.log(`Rejected ${rejectedNoImage} pending articles still with no real image after ${STALE_NO_IMAGE_HOURS}+ hours.`);
       const rejectedNoBody = await rejectStaleNoBodyArticles();
       console.log(`Rejected ${rejectedNoBody} pending articles still with no real body after ${STALE_NO_BODY_HOURS}+ hours.`);
+      await savePhotoCache();
       const photos = photoLookupSummary();
       if (photos) console.log(photos);
       logTimingSummary("auto-approve");

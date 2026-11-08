@@ -14,12 +14,22 @@ jobs:
   run-ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      # Wikimedia photo lookups (src/lib/ingestion/wikimediaImages.ts): wait out a rate-limit refusal, and keep a lookup cache between runs.
+      WIKIMEDIA_WAIT: "1"
+      PHOTO_CACHE_FILE: ${{ github.workspace }}/.photo-cache/photos.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - run: npm ci
+      - name: Photo lookup cache
+        uses: actions/cache@v4
+        with:
+          path: .photo-cache
+          key: photo-cache-${{ github.run_id }}
+          restore-keys: photo-cache-
       - run: npx tsx src/lib/ingestion/runIngest.ts
         timeout-minutes: 20
         env:
