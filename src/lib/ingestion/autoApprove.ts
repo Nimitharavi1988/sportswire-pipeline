@@ -25,7 +25,7 @@ import { pushIsConfigured } from "../pushConfig";
 import { isSimilarToAny } from "../titleSimilarity";
 import { orderForVariety } from "../social/reelVariety";
 import { cardAllowedFor, cardUrlFor, fallbackCardCategories, isFallbackCard, isNoPhotoRejection, cardWaitMinutes, isBigStory, FALLBACK_CARD_AFTER_MINUTES, REVIVE_WINDOW_HOURS, UPGRADE_WINDOW_HOURS, UPGRADE_RETRY_HOURS, MAX_UPGRADES_PER_RUN } from "../fallbackCards";
-import { fetchPersonPhoto, sportSearchHint, photoLookupSummary, loadPhotoCache, savePhotoCache } from "./wikimediaImages";
+import { fetchPersonPhoto, sportSearchHint, photoLookupSummary, loadPhotoCache, savePhotoCache, markTried, wasTriedRecently } from "./wikimediaImages";
 import { primaryTrackedPlayerIn } from "../players";
 import { venuePhotoFor, isVenueFilePhoto } from "../venuePhotos";
 import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, hasUsableImage, isAutoApprovable, isHockeyNewsSyndicated } from "../contentQuality";
@@ -808,7 +808,8 @@ export async function reviveNoPhotoRejects(): Promise<number> {
 
 // A story that has only a card (or a venue file photo) but names a tracked player gets another try at that player's Wikimedia photo (fallbackCards.ts: UPGRADE_*). The first
 // lookup at ingestion can fail for a reason that passes (Wikimedia backing us off, 2026-11-07), and the card is only the fallback. A try that finds
-// nothing touches updatedAt, so the same story is not tried again for UPGRADE_RETRY_HOURS.
+// nothing is marked (wikimediaImages.ts markTried), so the same story is not tried again for UPGRADE_RETRY_HOURS; updatedAt is not touched, because it is
+// published as the article's dateModified.
 export async function upgradeCardPhotos(): Promise<{ tried: number; upgraded: number }> {
   if (fallbackCardCategories().length === 0) return { tried: 0, upgraded: 0 };
   const now = Date.now();
@@ -817,16 +818,16 @@ export async function upgradeCardPhotos(): Promise<{ tried: number; upgraded: nu
     .where(and(
       inArray(article.status, ["pending_review", "published"]),
       gte(article.createdAt, new Date(now - UPGRADE_WINDOW_HOURS * 60 * 60 * 1000)),
-      lt(article.updatedAt, new Date(now - UPGRADE_RETRY_HOURS * 60 * 60 * 1000)),
       or(like(article.heroImageUrl, "%/cards/%"), like(article.heroImageCredit, "File photo of%")),
     ))
     .orderBy(desc(article.createdAt))
-    .limit(60);
+    .limit(150);
   let tried = 0;
   let upgraded = 0;
   for (const a of rows) {
     if (tried >= MAX_UPGRADES_PER_RUN) break;
     if (!(isFallbackCard(a.heroImageUrl) || isVenueFilePhoto(a.heroImageCredit)) || isMatchDataSource(a.sourceName)) continue;
+    if (wasTriedRecently(`upgrade|${a.id}`)) continue;
     const player = primaryTrackedPlayerIn(a.title);
     if (!player) continue;
     tried++;
@@ -835,7 +836,7 @@ export async function upgradeCardPhotos(): Promise<{ tried: number; upgraded: nu
       await db.update(article).set({ heroImageUrl: photo.url, heroImageCredit: photo.credit ?? null, heroImageCreditUrl: photo.creditUrl ?? null, updatedAt: new Date() }).where(eq(article.id, a.id));
       upgraded++;
     } else {
-      await db.update(article).set({ updatedAt: new Date() }).where(eq(article.id, a.id));
+      markTried(`upgrade|${a.id}`, UPGRADE_RETRY_HOURS * 60 * 60 * 1000);
     }
     await new Promise((r) => setTimeout(r, 1500)); // Wikimedia's etiquette, and a gentler pace after the earlier backing off
   }

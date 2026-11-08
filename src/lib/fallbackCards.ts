@@ -28,7 +28,7 @@ export const isNoPhotoRejection = (reason: string | null | undefined): boolean =
 // MAX_UPGRADES_PER_RUN lookups per run, and a story that found nothing waits UPGRADE_RETRY_HOURS before the next try.
 export const UPGRADE_WINDOW_HOURS = 48;
 export const UPGRADE_RETRY_HOURS = 3;
-export const MAX_UPGRADES_PER_RUN = 8;
+export const MAX_UPGRADES_PER_RUN = 12;
 
 const SITE = "https://www.sportswirelive.com";
 
@@ -49,11 +49,12 @@ export type CardKind = (typeof CARD_KINDS)[number];
 export const KIND_VARIANTS = 2;
 const KIND_PATTERNS: [CardKind, RegExp][] = [
   ["injury", /\b(injur\w*|ruled out|fitness|surgery|concussion|sidelined|hamstring|knee|ankle|recover\w*)\b/i],
-  ["transfer", /\b(transfer\w*|signs?|signing|contract|extension|loan|joins?|deal|released?|trade[sd]?|free agent)\b/i],
-  ["record", /\b(record|history|historic|milestone|century|hundred|ton|hat-?trick|first ever|fastest|highest|youngest|oldest)\b/i],
+  ["transfer", /\b(transfer\w*|signs?|signing|contract|extension|loan|trade[sd]?|free agent|agrees? terms|set to join|move to)\b/i],
+  ["record", /\b(record|history|historic|milestone|century|hundred|hat-?trick|first ever|fastest|highest|youngest|oldest)\b/i],
   ["quote", /\b(says?|said|reveals?|admits?|opens up|claims?|insists?|speaks?|warns?|hits? out|slams?)\b/i],
-  ["result", /\b(beat|beats|defeat\w*|win|wins|won|victory|thriller|lose|loses|lost|edge[sd]?|clinch\w*|seal\w*|draw|drew|series)\b|\b\d{1,3}\s?[-–]\s?\d{1,3}\b/i],
-  ["preview", /\b(preview|ahead of|to face|take on|prepare|set to|vs\.?|versus|will|could|how to watch|where to watch|squad|team news|lineup|predicted)\b/i],
+  // Looking ahead or explaining ("could help them win", "3 reasons why", "how to watch") is a preview, not a result, even when it uses a result word.
+  ["preview", /\b(could|would|will|should|might|can|reasons?|ways? to|chances?|how to|preview|ahead of|to face|take on|prepare|set to|vs\.?|versus|where to watch|team news|lineup|predicted)\b/i],
+  ["result", /\b(beat|beats|beaten|defeat\w*|won|wins|victory|thriller|clinch\w*|stun\w*|edge[sd]?|thrash\w*|draw|drew|lose|loses|lost)\b|\b\d{1,3}\s?[-–]\s?\d{1,3}\b/i],
 ];
 export function cardKindFor(title: string): CardKind | null {
   for (const [kind, re] of KIND_PATTERNS) if (re.test(title)) return kind;

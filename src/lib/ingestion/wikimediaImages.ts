@@ -163,6 +163,24 @@ export async function savePhotoCache(): Promise<void> {
   }
 }
 
+// Work already done on a story, remembered like a lookup (2026-11-08): the photo upgrade pass marks a story it found nothing for, and skips it until the
+// mark runs out. This replaces touching the story's updatedAt, which the site publishes as the article's dateModified and the sitemap's lastmod.
+// Kept in the run-to-run cache file when there is one, otherwise only for this process.
+const memoryMarks = new Map<string, number>();
+export function markTried(key: string, ms: number): void {
+  const until = Date.now() + ms;
+  memoryMarks.set(key, until);
+  if (fileCache) {
+    fileCache.set(`mark|${key}`, { v: null, until });
+    fileCacheDirty = true;
+  }
+}
+export function wasTriedRecently(key: string): boolean {
+  const now = Date.now();
+  if ((memoryMarks.get(key) ?? 0) > now) return true;
+  return (fileCache?.get(`mark|${key}`)?.until ?? 0) > now;
+}
+
 function buildCredit(meta: any, fileName: string, kind: "Photo" | "Image"): { credit: string; creditUrl: string } | null {
   const licenseShortName: string = meta.LicenseShortName?.value ?? meta.License?.value ?? "";
   if (!isFreeLicense(licenseShortName)) return null;

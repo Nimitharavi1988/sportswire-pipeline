@@ -90,6 +90,28 @@ export function hasUsableImage(article: { heroImageUrl: string | null; homeCrest
   return hasRealImage(article) || isFallbackCard(article.heroImageUrl);
 }
 
+// Real-photo stories first on a sport page (2026-11-08): our cards are accepted there so the page is never empty, but nearly half of a sport page's
+// pictures were cards. The first `slots` places take at most `maxCards` card stories; every other story keeps its order after them. Stable and pure.
+export function photoFirst<T extends { heroImageUrl: string | null; homeCrestUrl: string | null }>(items: T[], slots = 6, maxCards = 2): T[] {
+  const head: T[] = [];
+  const deferred: T[] = [];
+  const rest: T[] = [];
+  let cards = 0;
+  for (const a of items) {
+    if (head.length >= slots) {
+      rest.push(a);
+    } else if (hasRealImage(a)) {
+      head.push(a);
+    } else if (cards < maxCards) {
+      head.push(a);
+      cards++;
+    } else {
+      deferred.push(a);
+    }
+  }
+  return [...head, ...deferred, ...rest];
+}
+
 export function isAutoApprovable(article: {
   body: string | null;
   heroImageUrl: string | null;
