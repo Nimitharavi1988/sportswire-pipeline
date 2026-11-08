@@ -478,8 +478,9 @@ export async function renderReel(params: {
   // The punch zoom (topic Pages): the picture or art starts a little bigger and settles as the hook lands (reelOpening.ts punchExpr).
   punchZoom?: boolean;
 }): Promise<Buffer> {
-  const ffmpegPath = (await import("ffmpeg-static")).default as unknown as string | null;
-  if (!ffmpegPath) throw new Error("ffmpeg-static has no binary for this platform");
+  // FFMPEG_PATH (the pipeline job sets it to the system ffmpeg, 2026-11-08: ffmpeg-static's download from GitHub failed for hours and stopped every run) wins over ffmpeg-static.
+  const ffmpegPath = process.env.FFMPEG_PATH || ((await import("ffmpeg-static")).default as unknown as string | null);
+  if (!ffmpegPath) throw new Error("no ffmpeg: FFMPEG_PATH is not set and ffmpeg-static has no binary for this platform");
 
   const fontsDir = join(process.cwd(), "src/assets/fonts");
   const headFont = REEL_FONTS[params.font ?? DEFAULT_REEL_FONT];

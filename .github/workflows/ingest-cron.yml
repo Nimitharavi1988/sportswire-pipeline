@@ -17,21 +17,29 @@ jobs:
     env:
       # Wikimedia photo lookups (src/lib/ingestion/wikimediaImages.ts): wait out a rate-limit refusal, and keep a lookup cache between runs.
       WIKIMEDIA_WAIT: "1"
+      FFMPEG_PATH: /usr/bin/ffmpeg
       PHOTO_CACHE_FILE: ${{ github.workspace }}/.photo-cache/photos.json
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # ffmpeg-static downloads its binary from GitHub during install; that download fails now and then (2026-11-08: 4 of 5 runs), so retry.
+      # Install scripts are skipped: ffmpeg-static downloads its binary from GitHub's release servers, which returned 504 for hours on 2026-11-08 and stopped
+      # every run. ffmpeg comes from the Ubuntu package instead (FFMPEG_PATH, src/lib/social/reel.tsx). Of the packages with install scripts only esbuild
+      # remains, and it works without its script (its platform binary is an optional dependency).
       - name: Install dependencies
         run: |
-          for attempt in 1 2 3 4; do
-            npm ci && exit 0
-            echo "npm ci failed (attempt $attempt), retrying"
-            sleep $((attempt * 20))
+          for attempt in 1 2 3; do
+            npm ci --ignore-scripts && break
+            [ "$attempt" = "3" ] && exit 1
+            echo "npm ci failed (attempt $attempt), retrying"; sleep $((attempt * 20))
           done
-          exit 1
+          for attempt in 1 2 3; do
+            sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg && break
+            [ "$attempt" = "3" ] && exit 1
+            echo "apt install ffmpeg failed (attempt $attempt), retrying"; sleep $((attempt * 15))
+          done
+          ffmpeg -version | head -1
       - name: Photo lookup cache
         uses: actions/cache@v4
         with:

@@ -21,13 +21,12 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      # ffmpeg-static downloads its binary from GitHub during install; that download fails now and then (2026-11-08: 4 of 5 runs), so retry.
+      # Install scripts are skipped: ffmpeg-static's binary download from GitHub failed for hours on 2026-11-08, and this job renders nothing.
       - name: Install dependencies
         run: |
-          for attempt in 1 2 3 4; do
-            npm ci && exit 0
-            echo "npm ci failed (attempt $attempt), retrying"
-            sleep $((attempt * 20))
+          for attempt in 1 2 3; do
+            npm ci --ignore-scripts && exit 0
+            echo "npm ci failed (attempt $attempt), retrying"; sleep $((attempt * 20))
           done
           exit 1
       - run: npx tsx scripts/deliveryWatch.ts
