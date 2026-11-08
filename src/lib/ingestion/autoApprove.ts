@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { article, socialPost } from "@/db/schema";
-import { eq, and, inArray, notInArray, gte, lt, count, desc } from "drizzle-orm";
+import { eq, and, or, inArray, notInArray, gte, lt, like, count, desc } from "drizzle-orm";
 import { TOPIC_INSTAGRAM_KEYS } from "../social/facebookDestinations";
 import { instagramPhotoRoom, mainInstagramPhotoCap } from "../social/topicInstagramCap";
 import { createId } from "@paralleldrive/cuid2";
@@ -24,7 +24,10 @@ import { sendPushToAllSubscribers } from "../push";
 import { pushIsConfigured } from "../pushConfig";
 import { isSimilarToAny } from "../titleSimilarity";
 import { orderForVariety } from "../social/reelVariety";
-import { cardAllowedFor, cardUrlFor, fallbackCardCategories, FALLBACK_CARD_AFTER_HOURS } from "../fallbackCards";
+import { cardAllowedFor, cardUrlFor, fallbackCardCategories, isFallbackCard, isNoPhotoRejection, cardWaitMinutes, isBigStory, FALLBACK_CARD_AFTER_MINUTES, REVIVE_WINDOW_HOURS, UPGRADE_WINDOW_HOURS, UPGRADE_RETRY_HOURS, MAX_UPGRADES_PER_RUN } from "../fallbackCards";
+import { fetchPersonPhoto, sportSearchHint, photoLookupSummary } from "./wikimediaImages";
+import { primaryTrackedPlayerIn } from "../players";
+import { venuePhotoFor, isVenueFilePhoto } from "../venuePhotos";
 import { MIN_BODY_LENGTH, MIN_MATCH_DATA_BODY_LENGTH, hasRealImage, hasUsableImage, isAutoApprovable, isHockeyNewsSyndicated } from "../contentQuality";
 
 // Runs as a follow-up step right after runIngest.ts in the same GitHub
@@ -760,21 +763,83 @@ async function sendAutomatedPushNotifications(toApprove: { id: string; slug: str
 // to give budget-queued items their turn, not to protect bad content.
 export const STALE_NO_IMAGE_HOURS = 12;
 
-// A real story that still has no real photo after FALLBACK_CARD_AFTER_HOURS gets one of our branded cards instead of waiting to be
+// A real story that still has no real photo after FALLBACK_CARD_AFTER_MINUTES (none for a big story) gets one of our branded cards instead of waiting to be
 // rejected (fallbackCards.ts). Only the sports listed in FALLBACK_CARD_CATEGORIES, only stories that already have a write-up, are not
 // match-data rows and are not advertisements: "if the news is real", published with a plain picture rather than not at all.
 export async function assignFallbackCards(): Promise<number> {
   if (fallbackCardCategories().length === 0) return 0;
-  const cutoff = new Date(Date.now() - FALLBACK_CARD_AFTER_HOURS * 60 * 60 * 1000);
-  const candidates = await db.select({ id: article.id, title: article.title, category: article.category, body: article.body, sourceName: article.sourceName, heroImageUrl: article.heroImageUrl, homeCrestUrl: article.homeCrestUrl })
-    .from(article).where(and(eq(article.status, "pending_review"), lt(article.createdAt, cutoff)));
+  const now = Date.now();
+  const candidates = await db.select({ id: article.id, title: article.title, category: article.category, body: article.body, sourceName: article.sourceName, heroImageUrl: article.heroImageUrl, homeCrestUrl: article.homeCrestUrl, createdAt: article.createdAt, trendingScore: article.trendingScore, venue: article.venue })
+    .from(article).where(eq(article.status, "pending_review"));
   let n = 0;
   for (const a of candidates) {
     if (!cardAllowedFor(a.category) || !a.body || hasUsableImage(a) || isMatchDataSource(a.sourceName) || isPromotional(a.title)) continue;
-    await db.update(article).set({ heroImageUrl: cardUrlFor(a.category, a.id, process.env.SITE_URL?.startsWith("https://") ? process.env.SITE_URL : undefined), heroImageCredit: null, heroImageCreditUrl: null, updatedAt: new Date() }).where(eq(article.id, a.id));
+    // A big story does not wait for a photo (fallbackCards.ts isBigStory); the upgrade pass can still swap the card for a real photo later.
+    const waitMs = cardWaitMinutes(isBigStory(isHighlightWorthy(a.title), a.trendingScore)) * 60_000;
+    if (now - a.createdAt.getTime() < waitMs) continue;
+    // A cricket story whose venue is one of the listed grounds gets a free file photo of it (venuePhotos.ts); otherwise a card (flags, kind or plain).
+    const venuePhoto = venuePhotoFor(a.category, a.venue, a.title);
+    if (venuePhoto) {
+      await db.update(article).set({ heroImageUrl: venuePhoto.url, heroImageCredit: venuePhoto.credit, heroImageCreditUrl: venuePhoto.creditUrl, updatedAt: new Date() }).where(eq(article.id, a.id));
+      n++;
+      continue;
+    }
+    await db.update(article).set({ heroImageUrl: cardUrlFor(a.category, a.id, process.env.SITE_URL?.startsWith("https://") ? process.env.SITE_URL : undefined, a.title), heroImageCredit: null, heroImageCreditUrl: null, updatedAt: new Date() }).where(eq(article.id, a.id));
     n++;
   }
   return n;
+}
+
+// A story rejected only for having no photo (rejectStaleNoImageArticles below) comes back while it is still news: from 2026-11-07 cards cover its
+// sport, and Nov 5-7 about 9 stories per run were rejected for this reason before that. Back to "pending_review" with no rejection reason, so the card
+// assignment that follows gives it a card on the same run and the approval publishes it. Stories rejected for any other reason are not touched.
+export async function reviveNoPhotoRejects(): Promise<number> {
+  if (fallbackCardCategories().length === 0) return 0;
+  const since = new Date(Date.now() - REVIVE_WINDOW_HOURS * 60 * 60 * 1000);
+  const rows = await db.select({ id: article.id, title: article.title, category: article.category, body: article.body, sourceName: article.sourceName, rejectionReason: article.rejectionReason })
+    .from(article).where(and(eq(article.status, "rejected"), gte(article.createdAt, since), like(article.rejectionReason, "no real photo after%")));
+  const ids = rows
+    .filter((a) => isNoPhotoRejection(a.rejectionReason) && cardAllowedFor(a.category) && a.body && !isMatchDataSource(a.sourceName) && !isPromotional(a.title))
+    .map((a) => a.id);
+  if (ids.length === 0) return 0;
+  await db.update(article).set({ status: "pending_review", rejectionReason: null, updatedAt: new Date() }).where(inArray(article.id, ids));
+  return ids.length;
+}
+
+// A story that has only a card (or a venue file photo) but names a tracked player gets another try at that player's Wikimedia photo (fallbackCards.ts: UPGRADE_*). The first
+// lookup at ingestion can fail for a reason that passes (Wikimedia backing us off, 2026-11-07), and the card is only the fallback. A try that finds
+// nothing touches updatedAt, so the same story is not tried again for UPGRADE_RETRY_HOURS.
+export async function upgradeCardPhotos(): Promise<{ tried: number; upgraded: number }> {
+  if (fallbackCardCategories().length === 0) return { tried: 0, upgraded: 0 };
+  const now = Date.now();
+  const rows = await db.select({ id: article.id, title: article.title, category: article.category, slug: article.slug, sourceName: article.sourceName, heroImageUrl: article.heroImageUrl, heroImageCredit: article.heroImageCredit })
+    .from(article)
+    .where(and(
+      inArray(article.status, ["pending_review", "published"]),
+      gte(article.createdAt, new Date(now - UPGRADE_WINDOW_HOURS * 60 * 60 * 1000)),
+      lt(article.updatedAt, new Date(now - UPGRADE_RETRY_HOURS * 60 * 60 * 1000)),
+      or(like(article.heroImageUrl, "%/cards/%"), like(article.heroImageCredit, "File photo of%")),
+    ))
+    .orderBy(desc(article.createdAt))
+    .limit(60);
+  let tried = 0;
+  let upgraded = 0;
+  for (const a of rows) {
+    if (tried >= MAX_UPGRADES_PER_RUN) break;
+    if (!(isFallbackCard(a.heroImageUrl) || isVenueFilePhoto(a.heroImageCredit)) || isMatchDataSource(a.sourceName)) continue;
+    const player = primaryTrackedPlayerIn(a.title);
+    if (!player) continue;
+    tried++;
+    const photo = await fetchPersonPhoto(player.name, sportSearchHint(a.category), a.slug);
+    if (photo) {
+      await db.update(article).set({ heroImageUrl: photo.url, heroImageCredit: photo.credit ?? null, heroImageCreditUrl: photo.creditUrl ?? null, updatedAt: new Date() }).where(eq(article.id, a.id));
+      upgraded++;
+    } else {
+      await db.update(article).set({ updatedAt: new Date() }).where(eq(article.id, a.id));
+    }
+    await new Promise((r) => setTimeout(r, 1500)); // Wikimedia's etiquette, and a gentler pace after the earlier backing off
+  }
+  return { tried, upgraded };
 }
 
 export async function rejectStaleNoImageArticles(): Promise<number> {
@@ -820,11 +885,21 @@ export async function rejectStaleNoBodyArticles(): Promise<number> {
 
 if (require.main === module) {
   // Branded cards for real stories with no photo go on first, so the approval below sees them (fallbackCards.ts; off unless FALLBACK_CARD_CATEGORIES is set).
-  assignFallbackCards()
+  reviveNoPhotoRejects()
+    .then((revived) => {
+      if (revived) console.log(`Revived: ${revived} recent story(ies) rejected only for having no photo are back in the queue.`);
+    })
+    .catch((err) => console.error("Revive failed (continuing):", err))
+    .then(() => assignFallbackCards())
     .then((cards) => {
-      if (cards) console.log(`Fallback cards: ${cards} story(ies) with no real photo after ${FALLBACK_CARD_AFTER_HOURS}h got a branded card.`);
+      if (cards) console.log(`Fallback cards: ${cards} story(ies) with no real photo after ${FALLBACK_CARD_AFTER_MINUTES} min (big stories at once) got a branded card.`);
     })
     .catch((err) => console.error("Fallback cards failed (continuing):", err))
+    .then(() => upgradeCardPhotos())
+    .then(({ tried, upgraded }) => {
+      if (tried) console.log(`Photo upgrade: ${upgraded} of ${tried} card stories got a real photo of the player they name.`);
+    })
+    .catch((err) => console.error("Photo upgrade failed (continuing):", err))
     .then(() => autoApproveValidArticles())
     .then(async ({ checked, approved }) => {
       console.log(`Auto-approve: ${approved} of ${checked} pending articles met the bar (real image + body >= ${MIN_BODY_LENGTH} chars, or >= ${MIN_MATCH_DATA_BODY_LENGTH} for match-data sources).`);
@@ -832,6 +907,8 @@ if (require.main === module) {
       console.log(`Rejected ${rejectedNoImage} pending articles still with no real image after ${STALE_NO_IMAGE_HOURS}+ hours.`);
       const rejectedNoBody = await rejectStaleNoBodyArticles();
       console.log(`Rejected ${rejectedNoBody} pending articles still with no real body after ${STALE_NO_BODY_HOURS}+ hours.`);
+      const photos = photoLookupSummary();
+      if (photos) console.log(photos);
       logTimingSummary("auto-approve");
       process.exit(0);
     })

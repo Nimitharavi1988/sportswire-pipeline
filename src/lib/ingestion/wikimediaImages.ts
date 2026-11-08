@@ -75,6 +75,16 @@ export function titleMatchesName(title: string, name: string): boolean {
 // Retry-After period (default 60s, capped at 5 min).
 let wikiBackoffUntil = 0;
 
+// What the person-photo lookups did in this process (2026-11-07, after most cricket stories ended with a card and nothing recorded why). Logged at the
+// end of each job (photoLookupSummary): found = a chosen photo, canonical = only the Wikipedia lead image, noPage = no page for the name, filtered =
+// photos existed but none passed the rules, noFreePhoto = the page has none with a free licence, rateLimited = Wikimedia was backing us off.
+export const photoStats = { found: 0, canonical: 0, noPage: 0, filtered: 0, noFreePhoto: 0, rateLimited: 0, failed: 0 };
+export function photoLookupSummary(): string | null {
+  const total = Object.values(photoStats).reduce((a, b) => a + b, 0);
+  if (total === 0) return null;
+  return `[photos] ${total} person-photo lookups: ${Object.entries(photoStats).map(([k, v]) => `${v} ${k}`).join(", ")}`;
+}
+
 async function wikiFetch(url: string): Promise<any | null> {
   if (Date.now() < wikiBackoffUntil) return null;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -422,20 +432,31 @@ async function fetchPersonPhotoUncached(personName: string, sportHint?: string, 
   try {
     // 1. Resolve the name to the best-matching Wikipedia article.
     const title = await resolvePersonTitle(personName, sportHint);
-    if (!title) return null;
+    if (!title) {
+      photoStats[Date.now() < wikiBackoffUntil ? "rateLimited" : "noPage"]++;
+      return null;
+    }
 
+    let candidateCount = 0;
     if (seed) {
-      const picked = choosePhoto(await fetchPersonPhotoCandidates(title, personName), seed, photoUsage);
+      const candidates = await fetchPersonPhotoCandidates(title, personName);
+      candidateCount = candidates.length;
+      const picked = choosePhoto(candidates, seed, photoUsage);
       if (picked) {
         notePhotoUse(picked.url);
+        photoStats.found++;
         return { url: picked.url, credit: picked.credit, creditUrl: picked.creditUrl };
       }
     }
 
     // 2. No seed, or the seeded pool came back empty — fall back to
     // Wikipedia's own curated lead photo.
-    return await fetchCanonicalPersonPhoto(title);
+    const lead = await fetchCanonicalPersonPhoto(title);
+    if (lead) photoStats.canonical++;
+    else photoStats[Date.now() < wikiBackoffUntil ? "rateLimited" : candidateCount > 0 ? "filtered" : "noFreePhoto"]++;
+    return lead;
   } catch (err) {
+    photoStats.failed++;
     console.error(`Wikimedia photo lookup failed for "${personName}":`, err);
     return null;
   }

@@ -45,7 +45,7 @@ const generateCommentary = (...args: Parameters<typeof generateCommentaryUntimed
 const generateMatchRecap = (...args: Parameters<typeof generateMatchRecapUntimed>) => timed("generateMatchRecap (Gemini)", () => generateMatchRecapUntimed(...args));
 const verifyCommentaryHasSubstance = (...args: Parameters<typeof verifyCommentaryHasSubstanceUntimed>) => timed("verifyCommentaryHasSubstance (Gemini)", () => verifyCommentaryHasSubstanceUntimed(...args));
 import { extractArticleContent, extractArticleContentDetailed } from "./articleTextExtractor";
-import { commonsFileKey, fetchPersonPhoto, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
+import { commonsFileKey, fetchPersonPhoto, photoLookupSummary, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
 import { isExcludedSource } from "../excludedSources";
 import { competitionFromSummary } from "../teamNames";
 import { MATCH_DATA_SOURCE_NAMES, isMatchDataSource, supersedes } from "../matchDataSources";
@@ -1107,6 +1107,8 @@ export async function runIngest() {
   await runPool(rawItems, itemConcurrency, (item) => [dedupeHashFor(item), ...keysFor(item)], processItem);
 
   logTimingSummary("ingest");
+  const photoSummary = photoLookupSummary();
+  if (photoSummary) console.log(photoSummary);
   if (thinSourceSkips > 0) console.log(`[ingest] ${thinSourceSkips} stories left unwritten: source text too thin or not about the headline (MIN_GROUNDING_CHARS=${minGroundingChars(process.env.MIN_GROUNDING_CHARS)}).`);
   if (aiUnavailableReason()) console.warn(`[ingest] ${aiUnavailableReason()} — stories were left pending, not rejected; they will be written once the AI is back.`);
   console.log(

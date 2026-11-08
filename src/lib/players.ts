@@ -459,15 +459,21 @@ export const SUPERSTAR_SEARCH_TERMS = TRACKED_PLAYERS.flatMap((p) => p.searchTer
 // search term appears earliest in the title is a much better signal than
 // trusting knownPersonName blindly whenever more than one name is present.
 export function resolvePrimaryPlayerName(title: string, fallbackName: string): string {
+  return primaryTrackedPlayerIn(title)?.name ?? fallbackName;
+}
+
+// The tracked player a headline is about, by the same earliest-name rule, or null when it names none (the photo upgrade pass starts from a title
+// alone, with no known person to fall back on).
+export function primaryTrackedPlayerIn(title: string): TrackedPlayer | null {
   const lower = title.toLowerCase();
-  let best: { name: string; index: number } | null = null;
+  let best: { player: TrackedPlayer; index: number } | null = null;
   for (const player of TRACKED_PLAYERS) {
     for (const term of player.searchTerms) {
       const index = lower.indexOf(term.toLowerCase());
       if (index !== -1 && (!best || index < best.index)) {
-        best = { name: player.name, index };
+        best = { player, index };
       }
     }
   }
-  return best?.name ?? fallbackName;
+  return best?.player ?? null;
 }
