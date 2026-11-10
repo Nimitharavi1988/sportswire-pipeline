@@ -236,6 +236,7 @@ export async function generateCommentary(
   if (!sourceSnippet || sourceSnippet.trim().length < 20) return EMPTY_RESULT;
 
   const parsed = await callGemini(buildRssPrompt(title, sourceSnippet, sourceName), {
+    priority: "low",
     responseSchema: {
       type: "OBJECT",
       properties: {
@@ -295,6 +296,7 @@ Does the text above contain at least one specific, checkable fact (a number, a n
 
 export async function verifyCommentaryHasSubstance(title: string, commentary: string): Promise<boolean> {
   const parsed = await callGemini(buildSubstanceCheckPrompt(title, commentary), {
+    priority: "low",
     responseSchema: {
       type: "OBJECT",
       properties: { hasSubstance: { type: "BOOLEAN" } },
@@ -373,7 +375,7 @@ export async function generateSocialCaptions(title: string, body: string, langua
   if (!body || body.trim().length < 40) return null;
 
   const parsed = await callGemini(buildSocialCaptionsPrompt(title, body, language, facebookStyle), {
-    priority: "low",
+    priority: "high",
     model: COPY_MODEL,
     temperature: 0.6,
     maxOutputTokens: 2048,
@@ -467,7 +469,7 @@ export async function generatePosterContent(title: string, body: string, languag
     ? "\n\nLANGUAGE: Write the eyebrow, hook and every row label and value in neutral Spanish for US Hispanic, Latin American and Spanish readers (no regional slang). Keep names of people, teams and competitions as they are normally written."
     : "";
   const parsed = await callGemini(buildPosterPrompt(title, body, opts?.styles) + languageRule, {
-    priority: "low",
+    priority: "high",
     model: COPY_MODEL,
     temperature: 0.5,
     maxOutputTokens: 2048,
