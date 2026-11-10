@@ -116,7 +116,7 @@ const spokenLead = (category: string, language: "en" | "es" = "en"): string | nu
 // The sentence after the opener starts in lower case when its first word is an ordinary one; a name keeps its capital.
 const COMMON_STARTS = new Set(["The", "A", "An", "After", "Before", "As", "With", "Why", "How", "What", "Who", "When", "Will", "Can", "Could", "Is", "Are", "Do", "Does", "Did", "Should", "Would", "Despite", "Following", "Amid", "Ahead", "On", "At", "For", "From", "It", "He", "She", "They", "This", "That", "Two", "Three", "Four", "Five", "New"]);
 const COMMON_STARTS_ES = new Set(["El", "La", "Los", "Las", "Un", "Una", "Unos", "Unas", "Tras", "Con", "Después", "Antes", "Por", "Para", "Según", "Cuando", "Cómo", "Qué", "Quién", "Por qué", "Durante", "Ante", "Sin", "Desde", "Hasta", "En", "Así", "Esta", "Este", "Ese", "Esa"]);
-const afterOpener = (s: string, language: "en" | "es" = "en") => s.replace(/^(\p{Lu}\p{Ll}*)\b/u, (w) => ((language === "es" ? COMMON_STARTS_ES : COMMON_STARTS).has(w) ? w.toLowerCase() : w));
+const afterOpener = (s: string, language: "en" | "es" = "en") => s.replace(/^(\p{Lu}\p{Ll}*)\b(?!\s+(?:Zealand|York|Orleans|Jersey|England|Delhi|South)\b)/u, (w) => ((language === "es" ? COMMON_STARTS_ES : COMMON_STARTS).has(w) ? w.toLowerCase() : w));
 
 // What is sent to the voice: the spoken text with each hard name respelled for the way it sounds. The respellings are English phonetics,
 // so Spanish text goes as written (a Spanish voice reads a name by Spanish rules).
@@ -145,6 +145,15 @@ export function buildShortScript(content: { hook: string }, category: string, la
   const lead = spokenLead(category, language);
   const hook = spokenText(content.hook, category, language);
   return forVoice(lead ? `${lead} ${afterOpener(hook, language)}` : hook, language);
+}
+
+// Why the voice read what it read, for the log: the description, or the headline because there was no readable description
+// (nothing generated, or only fragments and calls to action), or the headline because the description did not fit the reel's length.
+export function voiceSource(spoken: string, content: { hook: string }, category: string, description: string | null | undefined, language: "en" | "es" = "en"): string {
+  if (spoken === buildVoiceScript(content, category, description, language)) {
+    return description?.trim() && readableDescription(description, language === "es" ? VOICE_WORDS_ES : VOICE_WORDS, shortReelCaption) ? "description" : "headline: no readable description";
+  }
+  return spoken === buildShortScript(content, category, language) ? "headline: description too long" : "other";
 }
 
 // Length in seconds of a PCM WAV file (what Kokoro writes), or 0 when it is not one.
