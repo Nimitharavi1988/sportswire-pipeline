@@ -2,7 +2,7 @@ import { isPromoBannerImage } from "./promoImages";
 import { db } from "@/db";
 import { article, vertical } from "@/db/schema";
 import { and, count, eq, gte, ilike, inArray, isNotNull, ne, notInArray } from "drizzle-orm";
-import { commentaryRunBudget, dailyCommentaryCapFrom, scaledReserve } from "./commentaryBudget";
+import { commentaryRunBudget, dailyCommentaryCapFrom, scaledReserve, floorSlots, SPORT_DAILY_WRITEUP_FLOOR } from "./commentaryBudget";
 import { runPool } from "./pool";
 import { bestSource, minGroundingChars } from "./groundingRules";
 import { COVERAGE_WINDOW_MS, COVERED_REASON, createCoverageIndex } from "./coverageIndex";
@@ -142,17 +142,8 @@ const MAX_MATCH_RECAP_PER_RUN = 20;
 // cricket doesn't actually need still spills over via the pre-pass below.
 const CRICKET_COMMENTARY_RESERVED = 35;
 
-// A floor for the sports added 2026-10-03 (tennis, boxing, MMA, MotoGP, cycling, golf,
-// padel). Their stories rank low on the trending score next to football and cricket, so
-// with the shared budget alone they got almost no articles (boxing had two). The floor
-// is used first by these sports; once it is spent they still compete for the shared
-// budget like everyone else, and what they do not need spills over.
-const MINOR_SPORT_COMMENTARY_RESERVED = 25;
-// 2026-10-15: Formula 1, rugby and athletics join the list. They were not in it and competed for the shared
-// budget against football, NFL and cricket, so in 10 days 28 F1 stories, 20 rugby and 7 athletics stories
-// were rejected with "no write-up after 12h" (waiting for a write-up that never came). The floor only
-// reserves a share of the existing budget; it adds no write-ups beyond it.
-const MINOR_SPORT_CATEGORIES = new Set(["tennis", "boxing", "mma", "motogp", "cycling", "golf", "padel", "formula-1", "rugby", "athletics"]);
+// The minor-sports reserve (25 of 150 per run, 2026-10-03 to 2026-11-10) was replaced by a per-sport daily floor that covers every sport
+// (commentaryBudget.ts floorSlots): the shared reserve went to whichever minor sport trended, so MMA, hockey, padel and cycling still starved.
 
 // RSS items older than this are skipped outright rather than ingested —
 // see the skip site below for why. 24 hours, matching the site's display
@@ -460,7 +451,7 @@ export async function runIngest() {
   let flagged = 0;
   let cricketCommentaryCalls = 0;
   let otherCommentaryCalls = 0;
-  let minorCommentaryCalls = 0;
+  let floorCommentaryCalls = 0;
   let matchRecapCalls = 0;
 
   // Spillover: cricket's reserve is a ceiling, not a guarantee it'll all get
@@ -498,15 +489,28 @@ export async function runIngest() {
   console.log(`News write-ups: ${commentaryUsedLastHour} in the last hour (cap ${dailyCommentaryCap} a day); ${runCommentaryBudget} this run.`);
 
   const cricketCommentaryCap = Math.min(scaledReserve(CRICKET_COMMENTARY_RESERVED, MAX_COMMENTARY_PER_RUN, runCommentaryBudget), cricketCandidateCount, runCommentaryBudget);
-  const minorCandidateCount = rawItems.filter((item) => {
-    if (!MINOR_SPORT_CATEGORIES.has(item.category) || isMatchDataSource(item.sourceName)) return false;
+  // Per-sport daily floor (commentaryBudget.ts floorSlots): stories waiting per sport this run (same eligibility as cricket's pre-pass) and
+  // each sport's English write-ups in the last 24 hours (counted like the hourly total above).
+  const waitingBySport = new Map<string, number>();
+  for (const item of rawItems) {
+    if (isMatchDataSource(item.sourceName)) continue;
     const existing = existingArticles.get(dedupeHashFor(item));
-    return existing
-      ? existing.body === null && existing.status !== "flagged" && existing.status !== "rejected"
-      : true;
-  }).length;
-  const minorCommentaryCap = Math.min(scaledReserve(MINOR_SPORT_COMMENTARY_RESERVED, MAX_COMMENTARY_PER_RUN, runCommentaryBudget), minorCandidateCount, runCommentaryBudget - cricketCommentaryCap);
-  const otherCommentaryCap = Math.max(0, runCommentaryBudget - cricketCommentaryCap - minorCommentaryCap);
+    if (existing && (existing.body !== null || existing.status === "flagged" || existing.status === "rejected")) continue;
+    waitingBySport.set(item.category, (waitingBySport.get(item.category) ?? 0) + 1);
+  }
+  const writtenRows = await db.select({ category: article.category, n: count() }).from(article).where(and(
+    gte(article.updatedAt, new Date(Date.now() - 24 * 60 * 60 * 1000)),
+    isNotNull(article.body),
+    eq(article.language, "en"),
+    ne(article.sourceName, ORIGINAL_SOURCE),
+    notInArray(article.sourceName, MATCH_DATA_SOURCE_NAMES),
+  )).groupBy(article.category);
+  const writtenBySport = new Map(writtenRows.map((r) => [r.category, Number(r.n)]));
+  const floorCaps = floorSlots(writtenBySport, waitingBySport, runCommentaryBudget - cricketCommentaryCap);
+  const floorUsed = new Map<string, number>();
+  const floorTotal = [...floorCaps.values()].reduce((s, n) => s + n, 0);
+  const otherCommentaryCap = Math.max(0, runCommentaryBudget - cricketCommentaryCap - floorTotal);
+  if (floorCaps.size) console.log(`Write-up floor (${SPORT_DAILY_WRITEUP_FLOOR}/day): one slot held for ${[...floorCaps.keys()].map((s) => `${s} (${writtenBySport.get(s) ?? 0} in 24h)`).join(", ")}.`);
 
   // Stories already written up in the last 48 hours, per sport: a new story
   // whose headline closely matches one of them is the same event from
@@ -528,24 +532,28 @@ export async function runIngest() {
   // existing budget goes to.
   function canAffordCommentary(category: string): boolean {
     if (category === "cricket") return cricketCommentaryCalls < cricketCommentaryCap;
-    if (MINOR_SPORT_CATEGORIES.has(category) && minorCommentaryCalls < minorCommentaryCap) return true;
+    if ((floorUsed.get(category) ?? 0) < (floorCaps.get(category) ?? 0)) return true;
     return otherCommentaryCalls < otherCommentaryCap;
   }
   // Reserves a write-up from the budget and says which share it came from.
   // Items run concurrently now, so the budget is taken BEFORE the slow page
   // fetch and AI call (check and take are one synchronous step), and given
   // back if the attempt never reaches the AI.
-  type CommentaryShare = "cricket" | "minor" | "other";
+  type CommentaryShare = "cricket" | { floor: string } | "other";
   function recordCommentaryCall(category: string): CommentaryShare {
     if (category === "cricket") { cricketCommentaryCalls++; return "cricket"; }
-    if (MINOR_SPORT_CATEGORIES.has(category) && minorCommentaryCalls < minorCommentaryCap) { minorCommentaryCalls++; return "minor"; }
+    if ((floorUsed.get(category) ?? 0) < (floorCaps.get(category) ?? 0)) {
+      floorUsed.set(category, (floorUsed.get(category) ?? 0) + 1);
+      floorCommentaryCalls++;
+      return { floor: category };
+    }
     otherCommentaryCalls++;
     return "other";
   }
   function releaseCommentaryCall(share: CommentaryShare): void {
     if (share === "cricket") cricketCommentaryCalls--;
-    else if (share === "minor") minorCommentaryCalls--;
-    else otherCommentaryCalls--;
+    else if (share === "other") otherCommentaryCalls--;
+    else { floorUsed.set(share.floor, (floorUsed.get(share.floor) ?? 1) - 1); floorCommentaryCalls--; }
   }
 
   // Items run a few at a time (pool.ts): a run was 5-10 minutes of waiting on
@@ -1116,7 +1124,7 @@ export async function runIngest() {
   console.log(
     `Ingest run complete: ${ingested} new articles (${flagged} flagged), ${staleSkipped} stale RSS items skipped (older than ${MAX_RSS_ITEM_AGE_MS / 86400000}d), ${crossProviderSkipped} matches already stored from another provider (${crossProviderRefreshed} scored from a superseding one), ${reopenedFromDirect} Google-News-rejected stories reopened from the publisher's own feed, ` +
     `${duplicates} duplicates skipped (${backfilled} of those backfilled with a body they missed on a previous run), ` +
-    `${cricketCommentaryCalls + minorCommentaryCalls + otherCommentaryCalls} RSS commentary calls (${cricketCommentaryCalls} cricket, ${minorCommentaryCalls} new sports, ${otherCommentaryCalls} other), ${matchRecapCalls} match recap calls, ${coveredSkipped} not written up (same event as an earlier story). ` +
+    `${cricketCommentaryCalls + floorCommentaryCalls + otherCommentaryCalls} RSS commentary calls (${cricketCommentaryCalls} cricket, ${floorCommentaryCalls} sport floor, ${otherCommentaryCalls} other), ${matchRecapCalls} match recap calls, ${coveredSkipped} not written up (same event as an earlier story). ` +
     `(${scoreItems.length} from football-data.org, ${nflItems.length} from ESPN NFL, ${newsItems.length} from RSS, ${playerNewsItems.length} from per-player Google News search, ${cricketItems.length} from CricketData.org, ${trendingKeywords.length} trending keywords checked)`
   );
 }

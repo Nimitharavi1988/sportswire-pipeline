@@ -44,3 +44,26 @@ export function dailyCommentaryCapFrom(raw: string | undefined): number {
   const n = Number(raw?.trim());
   return raw && Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_DAILY_NEWS_COMMENTARY_CAP;
 }
+
+// Every sport's daily minimum of write-ups (2026-11-10). With about 400 write-ups a day and the shared budget going by trending score,
+// cricket, football and the NFL took nearly all of them: in four days MMA got 2 published stories, hockey 6, padel 2, cycling 4, while 100+
+// of each expired unwritten. A sport that has had fewer than SPORT_DAILY_WRITEUP_FLOOR write-ups in the last 24 hours and has a story waiting
+// this run gets one slot held for it, most-behind sport first. Floor slots take at most half of the run's budget after cricket's reserve, so
+// the busiest sports still get the rest by trending score. Like the cricket reserve, it moves budget between sports and adds none.
+export const SPORT_DAILY_WRITEUP_FLOOR = 12;
+
+// Slots held for sports below their daily floor this run, keyed by sport (pure, unit-tested). `written` is each sport's write-ups in the
+// last 24 hours, `waiting` its stories this run that could be written up, `available` the run's budget after cricket's reserve.
+export function floorSlots(written: Map<string, number>, waiting: Map<string, number>, available: number, floor = SPORT_DAILY_WRITEUP_FLOOR): Map<string, number> {
+  const slots = new Map<string, number>();
+  let left = Math.ceil(Math.max(0, available) / 2);
+  const behind = [...waiting.entries()]
+    .filter(([sport, n]) => sport !== "cricket" && n > 0 && (written.get(sport) ?? 0) < floor)
+    .sort((a, b) => (written.get(a[0]) ?? 0) - (written.get(b[0]) ?? 0) || a[0].localeCompare(b[0]));
+  for (const [sport] of behind) {
+    if (left <= 0) break;
+    slots.set(sport, 1);
+    left--;
+  }
+  return slots;
+}
