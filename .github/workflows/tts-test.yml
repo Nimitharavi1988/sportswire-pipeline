@@ -1,24 +1,53 @@
 name: Voice test (no posting)
-# Manual only. Runs the exact natural-mode Python from the website code on a GitHub runner and uploads the samples; posts nothing.
+# Manual only. Spanish voice feasibility: synthesize with the exact natural-mode script, then transcribe the audio back with Whisper and compare.
 on: workflow_dispatch
 permissions: { contents: read }
 jobs:
   tts:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
-      - run: pip install kokoro-onnx soundfile numpy
-      - name: Samples
+      - run: pip install kokoro-onnx soundfile numpy faster-whisper
+      - name: Spanish samples and round-trip check
         run: |
           mkdir out && cd out
           B=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
           curl -sL -o kokoro.onnx "$B/kokoro-v1.0.int8.onnx"; curl -sL -o voices.bin "$B/voices-v1.0.bin"
-          for key in clubs_england_spain clubs_italy_france clubs_germany clubs_rest; do
-            T=$(python3 -c "import json;print(json.load(open('../.github/data/tts-texts.json'))['$key'])")
-            python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin bm_george en-gb 1.0 "$key.wav" 42 "$T"
+          python3 - <<'PY'
+          from kokoro_onnx import Kokoro
+          k = Kokoro("kokoro.onnx", "voices.bin")
+          print("VOICES e*/p*/s*:", [v for v in k.get_voices() if v[0] in "eps"])
+          print("LANGS:", sorted(k.get_languages()) if hasattr(k, "get_languages") else "n/a")
+          PY
+          for V in em_alex em_santa ef_dora; do
+            for K in a b c; do
+              T=$(python3 -c "import json;print(json.load(open('../.github/data/es-texts.json'))['$K'])")
+              python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin $V es 1.05 "es_${V}_$K.wav" 42 "$T" || echo "SYNTH FAILED $V $K"
+            done
           done
+          python3 - <<'PY'
+          import json, glob, re
+          from faster_whisper import WhisperModel
+          texts = json.load(open("../.github/data/es-texts.json"))
+          m = WhisperModel("small", device="cpu", compute_type="int8")
+          def norm(s): return re.sub(r"[^a-záéíóúñü0-9 ]", "", s.lower()).split()
+          def wer(ref, hyp):
+              r, h = norm(ref), norm(hyp)
+              d = [[0]*(len(h)+1) for _ in range(len(r)+1)]
+              for i in range(len(r)+1): d[i][0] = i
+              for j in range(len(h)+1): d[0][j] = j
+              for i in range(1, len(r)+1):
+                  for j in range(1, len(h)+1):
+                      d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+(r[i-1]!=h[j-1]))
+              return d[len(r)][len(h)] / max(1, len(r))
+          for f in sorted(glob.glob("es_*.wav")):
+              seg, info = m.transcribe(f, language="es")
+              hyp = " ".join(s.text.strip() for s in seg)
+              key = f.split("_")[-1][0]
+              print(f"{f}: WER {wer(texts[key], hyp):.2f} | heard: {hyp}")
+          PY
       - uses: actions/upload-artifact@v4
         with: { name: voice-samples, path: out/*.wav }
