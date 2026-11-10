@@ -20,11 +20,17 @@ const execFileAsync = promisify(execFile);
 
 // Male voices that passed the listening test; one is picked per story. British ones use British pronunciation.
 export const VOICES = ["bm_george", "bm_fable", "bm_lewis", "bm_daniel", "am_michael", "am_adam"] as const;
-export function pickVoice(articleId: string): string {
+// Spanish (2026-11-10): Kokoro's Spanish men's voices. A speech-to-text check on the generated audio heard them almost word for word (0 to 13%
+// word error); a Spanish speaker has not listened, so the Spanish Page starts at a small share ("es:4" in VOICEOVER_PAGES = 1 story in 4).
+export const VOICES_ES = ["em_alex", "em_santa"] as const;
+export function pickVoice(articleId: string, language: "en" | "es" = "en"): string {
   let h = 11;
   for (const c of articleId) h = (h * 31 + c.charCodeAt(0)) >>> 0;
-  return VOICES[(h >>> 3) % VOICES.length];
+  const list = language === "es" ? VOICES_ES : VOICES;
+  return list[(h >>> 3) % list.length];
 }
+// Kokoro's language code for a voice: "e..." voices are Spanish, "b..." British English, the rest American.
+export const voiceLang = (voice: string) => (voice.startsWith("e") ? "es" : voice.startsWith("b") ? "en-gb" : "en-us");
 
 // The voice must end before the end card: the reel is about 11.8 s and the voice starts a beat in.
 export const MAX_VOICE_SECONDS = 10.2;
@@ -33,14 +39,30 @@ export const MAX_VOICE_SECONDS = 10.2;
 const NATION_NAMES: Record<string, string> = { IND: "India", PAK: "Pakistan", AUS: "Australia", ENG: "England", SA: "South Africa", NZ: "New Zealand", WI: "West Indies", SL: "Sri Lanka", BAN: "Bangladesh", AFG: "Afghanistan", ZIM: "Zimbabwe", IRE: "Ireland" };
 
 // Topic Page keys with the voice switched on (comma separated), e.g. "cricketlive". Empty = off everywhere.
+// An entry may carry a share: "es:4" voices 1 story in 4 of that Page (default 2 = half), used for the Spanish Page until someone has listened.
+const entries = (env: Record<string, string | undefined>) => (env.VOICEOVER_PAGES ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 export function voiceoverPages(env: Record<string, string | undefined> = process.env): string[] {
-  return (env.VOICEOVER_PAGES ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return entries(env).map((e) => e.split(":")[0]);
+}
+export function voiceShare(key: string, env: Record<string, string | undefined> = process.env): number {
+  const e = entries(env).find((x) => x.split(":")[0] === key);
+  const n = Number(e?.split(":")[1]);
+  return Number.isInteger(n) && n >= 1 ? n : 2;
 }
 
-// The English YouTube channel (2026-11-07): the key "youtube" in VOICEOVER_PAGES gives every English Short the commentary voice, also the ones
-// made from main Page stories. Only the Short's own render has it; the main Page's and main Instagram's files stay as they are.
-export function youtubeVoiceOn(env: Record<string, string | undefined> = process.env): boolean {
-  return voiceoverPages(env).includes("youtube");
+// The YouTube channels (2026-11-07): the key "youtube" in VOICEOVER_PAGES gives every English Short the commentary voice, also the ones
+// made from main Page stories; "youtube-es" does the same for the Spanish channel (optionally with a share, "youtube-es:4"). Only the
+// Short's own render has it; the main Page's and main Instagram's files stay as they are.
+export function youtubeVoiceOn(env: Record<string, string | undefined> = process.env, language: "en" | "es" = "en", articleId = ""): boolean {
+  const key = language === "es" ? "youtube-es" : "youtube";
+  const entry = entries(env).find((x) => x.split(":")[0] === key);
+  if (!entry) return false;
+  // No share written ("youtube") = every Short; "youtube-es:4" = one Short in four.
+  const share = Number(entry.split(":")[1]);
+  if (!entry.includes(":") || !Number.isInteger(share) || share <= 1 || !articleId) return true;
+  let h = 13;
+  for (const c of articleId) h = (h * 37 + c.charCodeAt(0)) >>> 0;
+  return h % share === 0;
 }
 
 // Half the stories (by id) of a listed Page get the voice, the rest stay silent as the comparison. The main Page and main Instagram
@@ -49,12 +71,22 @@ export function voiceoverFor(topicKey: string | undefined, articleId: string, en
   if (!topicKey || !voiceoverPages(env).includes(topicKey)) return false;
   let h = 7;
   for (const c of articleId) h = (h * 33 + c.charCodeAt(0)) >>> 0;
-  return h % 2 === 0;
+  return h % voiceShare(topicKey, env) === 0;
 }
 
 // Text as it should be spoken: no emoji or symbols, "vs" as "versus", codes spelled out, ending in a full stop. Names are NOT
 // respelled here (see forVoice), so this stays the real spelling.
-export function spokenText(raw: string, category = ""): string {
+export function spokenText(raw: string, category = "", language: "en" | "es" = "en"): string {
+  if (language === "es") {
+    const es = speakScores(raw, category, "es")
+      .replace(/[^\p{L}\p{N}\s.,'’:;!?¡¿%&/\-–—]/gu, " ")
+      .replace(/\bvs?\.?(?=\s)/gi, "contra")
+      .replace(/\s*[–—]\s*/g, ", ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[\s,;:]+$/, "");
+    return es && !/[.!?]$/.test(es) ? es + "." : es;
+  }
   const cleaned = speakScores(raw, category)
     .replace(/\b([A-Z]{2,3})v(?:s)?([A-Z]{2,3})\b/g, (m, a: string, b: string) => (NATION_NAMES[a] && NATION_NAMES[b] ? `${NATION_NAMES[a]} versus ${NATION_NAMES[b]}` : m))
     .replace(/\bXI\b/g, "eleven")
@@ -70,7 +102,12 @@ export function spokenText(raw: string, category = ""): string {
 // The sport as it is said first. A voice spells an acronym out letter by letter with gaps ("M... M... A"), so MMA is said in full.
 const SPOKEN_LEADS: Record<string, string> = { mma: "mixed martial arts" };
 // The opener, joined to the sentence: "In football, ..." (not a separate "Football news." line, 2026-10-31). Acronym sports keep their capitals.
-const spokenLead = (category: string): string | null => {
+const SPOKEN_LEADS_ES: Record<string, string> = {
+  football: "En fútbol,", cricket: "En críquet,", "american-football": "En la NFL,", "college-football": "En el fútbol americano universitario,", basketball: "En la NBA,",
+  wnba: "En la WNBA,", baseball: "En béisbol,", hockey: "En la NHL,", mma: "En artes marciales mixtas,", boxing: "En boxeo,", tennis: "En tenis,", "formula-1": "En la Fórmula 1,",
+};
+const spokenLead = (category: string, language: "en" | "es" = "en"): string | null => {
+  if (language === "es") return SPOKEN_LEADS_ES[category.split("/")[0]] ?? null;
   const word = SPOKEN_LEADS[category.split("/")[0]] ?? sportKeywordFor(category);
   if (!word) return null;
   const name = /^[A-Z]{2,}$/.test(word) ? `the ${word}` : word.toLowerCase();
@@ -78,30 +115,36 @@ const spokenLead = (category: string): string | null => {
 };
 // The sentence after the opener starts in lower case when its first word is an ordinary one; a name keeps its capital.
 const COMMON_STARTS = new Set(["The", "A", "An", "After", "Before", "As", "With", "Why", "How", "What", "Who", "When", "Will", "Can", "Could", "Is", "Are", "Do", "Does", "Did", "Should", "Would", "Despite", "Following", "Amid", "Ahead", "On", "At", "For", "From", "It", "He", "She", "They", "This", "That", "Two", "Three", "Four", "Five", "New"]);
-const afterOpener = (s: string) => s.replace(/^(\p{Lu}\p{Ll}*)\b/u, (w) => (COMMON_STARTS.has(w) ? w.toLowerCase() : w));
+const COMMON_STARTS_ES = new Set(["El", "La", "Los", "Las", "Un", "Una", "Unos", "Unas", "Tras", "Con", "Después", "Antes", "Por", "Para", "Según", "Cuando", "Cómo", "Qué", "Quién", "Por qué", "Durante", "Ante", "Sin", "Desde", "Hasta", "En", "Así", "Esta", "Este", "Ese", "Esa"]);
+const afterOpener = (s: string, language: "en" | "es" = "en") => s.replace(/^(\p{Lu}\p{Ll}*)\b/u, (w) => ((language === "es" ? COMMON_STARTS_ES : COMMON_STARTS).has(w) ? w.toLowerCase() : w));
 
-// What is sent to the voice: the spoken text with each hard name respelled for the way it sounds.
-export const forVoice = (spoken: string) => applySpeechNames(spoken);
+// What is sent to the voice: the spoken text with each hard name respelled for the way it sounds. The respellings are English phonetics,
+// so Spanish text goes as written (a Spanish voice reads a name by Spanish rules).
+export const forVoice = (spoken: string, language: "en" | "es" = "en") => (language === "es" ? spoken : applySpeechNames(spoken));
 
 // The story's description read aloud: its first sentence (cut at a clause break if long), opened with "In cricket," when that
 // sentence never names the sport. Without a description, the on-screen hook. At most about 30 words.
 // About 10 seconds of speech: the reel is 11.8 s long and the voice must end before the end card (makeVoice retries faster, then shorter).
 export const VOICE_WORDS = 28;
 
-export function buildVoiceScript(content: { hook: string }, category: string, description?: string | null): string {
-  const lead = spokenLead(category);
+// Spanish runs about 15-20% longer for the same content, so fewer words fit in the same 10 seconds.
+export const VOICE_WORDS_ES = 24;
+
+export function buildVoiceScript(content: { hook: string }, category: string, description?: string | null, language: "en" | "es" = "en"): string {
+  const lead = spokenLead(category, language);
   // Whole sentences of the description, as many as fit (sentences.ts), then the on-screen hook when nothing readable is left.
-  const base = (description?.trim() ? readableDescription(description, VOICE_WORDS, shortReelCaption) : "") || content.hook;
-  const sentence = spokenText(base, category);
-  const needsLead = lead && withSportKeyword(sentence, category) !== sentence;
-  return forVoice(needsLead ? `${lead} ${afterOpener(sentence)}` : sentence);
+  const budget = language === "es" ? VOICE_WORDS_ES : VOICE_WORDS;
+  const base = (description?.trim() ? readableDescription(description, budget, shortReelCaption) : "") || content.hook;
+  const sentence = spokenText(base, category, language);
+  const needsLead = lead && withSportKeyword(sentence, category, language) !== sentence;
+  return forVoice(needsLead ? `${lead} ${afterOpener(sentence, language)}` : sentence, language);
 }
 
 // The shorter text used when the description will not fit the reel: the sport and the hook.
-export function buildShortScript(content: { hook: string }, category: string): string {
-  const lead = spokenLead(category);
-  const hook = spokenText(content.hook, category);
-  return forVoice(lead ? `${lead} ${afterOpener(hook)}` : hook);
+export function buildShortScript(content: { hook: string }, category: string, language: "en" | "es" = "en"): string {
+  const lead = spokenLead(category, language);
+  const hook = spokenText(content.hook, category, language);
+  return forVoice(lead ? `${lead} ${afterOpener(hook, language)}` : hook, language);
 }
 
 // Length in seconds of a PCM WAV file (what Kokoro writes), or 0 when it is not one.
@@ -173,7 +216,7 @@ export async function synthesizeVoice(text: string, voice: string, speed = 1.05,
   if (!model || !voices || !text.trim()) return null;
   try {
     const out = join(await mkdtemp(join(tmpdir(), "voice-")), "voice.wav");
-    const lang = voice.startsWith("b") ? "en-gb" : "en-us";
+    const lang = voiceLang(voice);
     await execFileAsync(env.KOKORO_PYTHON ?? "python3", ["-c", KOKORO_PY, model, voices, voice, lang, String(speed), out, String(seed), text], { timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
     return out;
   } catch (err) {

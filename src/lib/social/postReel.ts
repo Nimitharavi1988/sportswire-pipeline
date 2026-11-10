@@ -438,9 +438,11 @@ export async function postReel(
   // The reel's opening: half the stories get the fast one, half the classic (the control); recorded in the decision log.
   const opening = openingFor(article.id);
   // Voice (voiceover.ts): English reels of the listed Pages, half the stories; the main Page is the key "main". Silent on any failure.
-  const voiceName = !locale && voiceoverFor(opts.topicPage ? opts.topicPage.key : "main", article.id) ? pickVoice(article.id) : null;
+  // The Spanish Page (key "es") is voiced in Spanish when listed ("es:4" = 1 story in 4); any other language edition stays silent.
+  const voiceLanguage: "en" | "es" | null = !locale ? "en" : locale === "es" ? "es" : null;
+  const voiceName = voiceLanguage && voiceoverFor(opts.topicPage ? opts.topicPage.key : "main", article.id) ? pickVoice(article.id, voiceLanguage) : null;
   const voiceSeed = [...article.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 17);
-  const voice = voiceName ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), voiceName, voiceSeed) : null;
+  const voice = voiceName && voiceLanguage ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook, voiceLanguage), buildShortScript(content, article.category, voiceLanguage), voiceName, voiceSeed) : null;
   const voicePath = voice?.path ?? null;
   if (voice) {
     console.log(`[voiceover] ${voiceName}, ${voice.seconds.toFixed(1)} s: ${voice.text}`);
@@ -449,7 +451,7 @@ export async function postReel(
   }
   // The YouTube Short's own voice (voiceover.ts youtubeVoiceOn): every English Short has the commentary, including those from main Page stories whose
   // Instagram and Facebook reels stay silent. A voiced topic Page reel already has one, and the Short uses it.
-  const youtubeVoice = needYouTube && !locale && !voicePath && youtubeVoiceOn() ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), pickVoice(article.id), voiceSeed) : null;
+  const youtubeVoice = needYouTube && voiceLanguage && !voicePath && youtubeVoiceOn(process.env, voiceLanguage, article.id) ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook, voiceLanguage), buildShortScript(content, article.category, voiceLanguage), pickVoice(article.id, voiceLanguage), voiceSeed) : null;
   const youtubeVoicePath = voicePath ?? youtubeVoice?.path ?? null;
   if (youtubeVoice) console.log(`[voiceover] YouTube Short only, ${youtubeVoice.seconds.toFixed(1)} s: ${youtubeVoice.text}`);
   setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null, youtubeVoice: Boolean(youtubeVoicePath), layout: layoutKind, noPhoto: isFallbackCard(article.heroImageUrl) }));

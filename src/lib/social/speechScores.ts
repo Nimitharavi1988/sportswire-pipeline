@@ -2,12 +2,15 @@
 // hyphen between numbers as "dash", "3/10" as a fraction and "87-run" as "87 dash run". This turns them into speech before the text
 // goes to the voice; the caption and on-screen text keep the real symbols. Pure, unit-tested.
 
+import { speakScoresEs } from "./speechScoresEs";
+
 const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty"];
 // Both numbers in words when both are small ("two zero"); otherwise both stay digits ("27 19"), so a pair never mixes the two.
 const isSmall = (n: string) => String(Number(n)) === n && Number(n) <= 20;
 
 // category: the story's category ("cricket" reads 6-26 as "six for twenty-six" and 259/7 as "259 for 7").
-export function speakScores(text: string, category = ""): string {
+export function speakScores(text: string, category = "", language: "en" | "es" = "en"): string {
+  if (language === "es") return speakScoresEs(text);
   const cricket = category.split("/")[0] === "cricket";
   let out = text;
   // Cricket scores and bowling figures: 259/7, 144/4 -> "259 for 7"; 6-26 -> "6 for 26" (wickets 10 or fewer, then runs 10 or more).
