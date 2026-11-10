@@ -335,6 +335,11 @@ export const FEEDS: RssFeed[] = [
   { url: "https://www.theguardian.com/sport/mlb/rss", category: "baseball", sourceName: "The Guardian" },
   { url: "https://www.theguardian.com/sport/nba/rss", category: "basketball", sourceName: "The Guardian" },
   { url: "https://www.theguardian.com/sport/nhl/rss", category: "hockey", sourceName: "The Guardian" },
+  // 2026-11-10: ESPN's RSS answers GitHub's runners with a bot challenge (empty 202, x-amzn-waf-action: challenge), so hockey, MMA and boxing lost
+  // their main feed. These were tested from a runner first: fresh items, and the article text (or the feed's own full text) readable there.
+  { url: "https://www.prohockeyrumors.com/feed", category: "hockey", sourceName: "Pro Hockey Rumors" },
+  { url: "https://thehockeynews.com/.rss/full/", category: "hockey", sourceName: "The Hockey News" },
+  { url: "https://www.cbssports.com/rss/headlines/nhl/", category: "hockey", sourceName: "CBS Sports" },
   // Volleyball had match results only (espnVolleyballData.ts/
   // volleyballData.ts), no news. Checked live 2026-09-26 (Volleyball
   // World's own feeds 404): Volleyball Magazine (~1/day), FIVB — the
@@ -438,9 +443,11 @@ export const FEEDS: RssFeed[] = [
   { url: "http://feeds.bbci.co.uk/sport/boxing/rss.xml", category: "boxing", sourceName: "BBC Sport" },
   { url: "https://www.espn.com/espn/rss/boxing/news", category: "boxing", sourceName: "ESPN" },
   { url: "https://www.theguardian.com/sport/boxing/rss", category: "boxing", sourceName: "The Guardian" },
+  { url: "https://www.boxingnews24.com/feed/", category: "boxing", sourceName: "Boxing News 24" },
   { url: "https://www.espn.com/espn/rss/mma/news", category: "mma", sourceName: "ESPN" },
   { url: "https://sports.yahoo.com/mma/rss/", category: "mma", sourceName: "Yahoo Sports" },
   { url: "https://www.cbssports.com/rss/headlines/mma/", category: "mma", sourceName: "CBS Sports" },
+  { url: "https://bloodyelbow.com/feed/", category: "mma", sourceName: "Bloody Elbow" },
   // 2026-10-15: direct feeds for publishers whose stories arrived only as Google News links. Those links cannot be
   // read (a 74-character headline is all we get), so 92-99% of the "source text too thin" rejections in football
   // (1,104 of 1,203 in 7 days), basketball, NFL and cricket were Google News links. These four read fine from
