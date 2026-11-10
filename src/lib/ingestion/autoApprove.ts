@@ -12,7 +12,7 @@ import { isHighlightWorthy } from "../highlightWorthy";
 import { isPushWorthy } from "../pushWorthy";
 import { postToTopicPages } from "../social/topicPosting";
 import { postPredictionPrompts, postPredictionResults } from "../social/predictionPosts";
-import { freshnessMultiplier } from "../social/freshness";
+import { freshnessMultiplier, reelIsFresh, reelMaxAgeHours } from "../social/freshness";
 import { MATCH_DAY_FRESHNESS_FLOOR, matchDayMultiplier, isMatchDayStory, BOTH_SIDES_MULTIPLIER, type Fixture } from "../social/matchDay";
 import { loadMatchDayFixtures } from "../social/matchDayFixtures";
 import { postSpanishShorts } from "../social/spanishShorts";
@@ -608,9 +608,18 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
   const reelSkipRows = await db.select({ articleId: postDecision.articleId, reason: postDecision.reason, createdAt: postDecision.createdAt }).from(postDecision)
     .where(and(eq(postDecision.platform, "instagram"), eq(postDecision.kind, "reel"), eq(postDecision.outcome, "skipped"), gte(postDecision.createdAt, new Date(Date.now() - 24 * 3_600_000))));
   const reelHeldBack = reelSkippedIds(reelSkipRows, new Date());
+  // Reels are for fresh news (freshness.ts): stories within the reel age limit go first, then those under a day old (a match-day or star story
+  // can still qualify), and older ones are left out. Before this the top of the pool was day-old stories that postReel skipped every run.
+  const reelNow = new Date();
+  const reelAgeLimit = reelMaxAgeHours();
+  const igNotHeld = igByTrending.filter((a) => !reelHeldBack.has(a.id));
+  const igReelOrder = [
+    ...igNotHeld.filter((a) => reelIsFresh(a.publishedAt, null, reelNow, reelAgeLimit)),
+    ...igNotHeld.filter((a) => !reelIsFresh(a.publishedAt, null, reelNow, reelAgeLimit) && reelIsFresh(a.publishedAt, null, reelNow, 24)),
+  ];
   const igEligible = igByTrending.filter((a) => isHighlightWorthy(a.title) && !reelHeldBack.has(a.id));
   const instagramMaxAttempts = instagramRunCap > 0 ? Math.max(instagramRunCap, MIN_INSTAGRAM_ATTEMPTS_PER_RUN) : 0;
-  const instagramCandidates = selectTopN(instagramMaxAttempts, igByTrending.filter((a) => !reelHeldBack.has(a.id)), igEligible, igRecentTitles, false);
+  const instagramCandidates = selectTopN(instagramMaxAttempts, igReelOrder, igEligible, igRecentTitles, false);
   console.log(
     `[instagram] postedToday=${instagramPostedToday} remainingToday=${instagramRemainingToday} runCap=${instagramRunCap} igPool=${igPool.length} candidates=${instagramCandidates.length}`
   );
