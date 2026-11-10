@@ -20,6 +20,7 @@ import type { LlmRouter } from "../llm/router";
 import type { Priority } from "../llm/ledger";
 import type { GeminiSchema } from "../llm/schema";
 import { STYLE_GUIDE, type HookStyle } from "../social/hookStyles";
+import { fallbackPosterContent } from "./posterFallback";
 import { chooseHook, type HookCandidate, type HookChoice } from "../social/hookChoice";
 
 // Lite tier — confirmed live (2026-09-19) resolves to gemini-3.5-flash-lite,
@@ -491,7 +492,12 @@ export async function generatePosterContent(title: string, body: string, languag
       required: ["eyebrow", "hook", "rows"],
     },
   });
-  if (!parsed) return null;
+  if (!parsed) {
+    // No AI could answer (every free provider at its limit): English reels use the story's own headline and sentences (posterFallback.ts).
+    const plain = !language || language === "en" ? fallbackPosterContent(title, body) : null;
+    if (plain) console.log("[reel] no AI available: using the article's own headline and sentences for the reel copy");
+    return plain;
+  }
 
   const eyebrow = typeof parsed.eyebrow === "string" ? parsed.eyebrow.trim() : "";
   let hook = typeof parsed.hook === "string" ? parsed.hook.trim() : "";
