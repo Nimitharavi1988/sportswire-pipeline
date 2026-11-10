@@ -29,7 +29,7 @@ jobs:
             done
           done
           python3 - <<'PY'
-          import json, glob, re
+          import json, glob, re, numpy as np, soundfile as sf
           from faster_whisper import WhisperModel
           texts = json.load(open("../.github/data/es-texts.json"))
           m = WhisperModel("small", device="cpu", compute_type="int8")
@@ -44,7 +44,11 @@ jobs:
                       d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+(r[i-1]!=h[j-1]))
               return d[len(r)][len(h)] / max(1, len(r))
           for f in sorted(glob.glob("es_*.wav")):
-              seg, info = m.transcribe(f, language="es")
+              x, sr = sf.read(f, dtype="float32")
+              if x.ndim > 1: x = x.mean(axis=1)
+              n = int(len(x) * 16000 / sr)
+              y = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype("float32")
+              seg, info = m.transcribe(y, language="es")
               hyp = " ".join(s.text.strip() for s in seg)
               key = f.split("_")[-1][0]
               print(f"{f}: WER {wer(texts[key], hyp):.2f} | heard: {hyp}")
