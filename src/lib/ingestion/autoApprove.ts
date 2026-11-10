@@ -116,7 +116,9 @@ const MAX_INSTAGRAM_POSTS_PER_RUN = 3;
 // hour overnight against runs every ~15 minutes (2026-09-29). So a run may try
 // up to this many candidates, in trending order, until one posts. It never
 // posts more than the pace allows: success ends the run.
-const MIN_INSTAGRAM_ATTEMPTS_PER_RUN = 3;
+// Raised from 3 to 12 (2026-11-10): with the free AI used up, only about 1 story in 5 can get reel copy (posterFallback.ts), so 3 tries
+// left whole runs empty. A skipped story costs no render and no Instagram call.
+const MIN_INSTAGRAM_ATTEMPTS_PER_RUN = 12;
 // Every ~15-min cron run in a day — used to PACE the daily budget evenly
 // across all 24 hours instead of letting it front-load into whichever
 // hours happen to have the most eligible content. Confirmed live: a flat
