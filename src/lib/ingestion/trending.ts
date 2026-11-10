@@ -43,26 +43,56 @@ import { SUPERSTAR_SEARCH_TERMS } from "../players";
 // the others' results.
 const TRENDS_GEOS = ["US", "GB", "IN", "IE", "SE"];
 
-export async function fetchTrendingKeywords(): Promise<string[]> {
-  const results = await Promise.all(
-    TRENDS_GEOS.map(async (geo) => {
-      try {
-        const result = await GoogleTrendsApi.dailyTrends({ geo, hl: "en" });
-        const keywords: string[] = [];
-        for (const item of result?.data ?? []) {
-          if (item.keyword) keywords.push(String(item.keyword).toLowerCase());
-          for (const related of item.relatedKeywords ?? []) {
-            keywords.push(String(related).toLowerCase());
-          }
-        }
-        return keywords;
-      } catch (err) {
-        console.error(`Google Trends fetch failed for geo=${geo} (continuing without it):`, err);
-        return [];
+// Google retired the daily-trends feed the library reads (404; it returned
+// zero keywords silently from about 2026-11-05, which collapsed every
+// trendingScore and emptied the topic reel pools). Its replacement is the
+// "trending now" RSS feed, read here directly; the library stays as a
+// fallback in case it works again.
+export function parseTrendsRss(xml: string): string[] {
+  const out: string[] = [];
+  for (const block of xml.split("<item>").slice(1)) {
+    const m = block.match(/<title>\s*(?:<!\[CDATA\[)?([^<\]]+?)(?:\]\]>)?\s*<\/title>/);
+    if (m) {
+      const kw = m[1].replace(/&amp;/g, "&").replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').trim().toLowerCase();
+      if (kw) out.push(kw);
+    }
+  }
+  return out;
+}
+
+async function fetchGeoKeywords(geo: string): Promise<string[]> {
+  const keywords: string[] = [];
+  try {
+    const res = await fetch("https://trends.google.com/trending/rss?geo=" + geo, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; SportsWireBot/1.0)" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (res.ok) keywords.push(...parseTrendsRss(await res.text()));
+    else console.error("Google Trends RSS geo=" + geo + " returned " + res.status);
+  } catch (err) {
+    console.error("Google Trends RSS fetch failed for geo=" + geo + ":", err);
+  }
+  if (keywords.length === 0) {
+    try {
+      const result = await GoogleTrendsApi.dailyTrends({ geo, hl: "en" });
+      for (const item of result?.data ?? []) {
+        if (item.keyword) keywords.push(String(item.keyword).toLowerCase());
+        for (const related of item.relatedKeywords ?? []) keywords.push(String(related).toLowerCase());
       }
-    })
-  );
-  return [...new Set(results.flat())];
+    } catch (err) {
+      console.error("Google Trends library fetch failed for geo=" + geo + " (continuing without it):", err);
+    }
+  }
+  return keywords;
+}
+
+export async function fetchTrendingKeywords(): Promise<string[]> {
+  const results = await Promise.all(TRENDS_GEOS.map(fetchGeoKeywords));
+  const all = [...new Set(results.flat())];
+  if (all.length === 0) {
+    console.error("WARNING: zero trending keywords from every source - trendingScore and topic reels will degrade");
+  }
+  return all;
 }
 
 // Confirmed real audience breakdown (2026-09-20): mostly USA, Sweden and

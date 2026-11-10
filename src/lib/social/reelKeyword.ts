@@ -50,3 +50,13 @@ export function withSportKeyword(caption: string, category: string, language: "e
   if (!text || entry[1].test(text)) return caption;
   return `${entry[0]}: ${text}`;
 }
+
+// The main Page test (2026-11-10): MAIN_CAPTION_KEYWORD = N puts the sport first in the captions of 1 main reel in N ("2" = half); unset or 0
+// = off. The other reels keep their captions, so plays can be compared. Stable per story (by id).
+export function mainKeywordOn(articleId: string, env: Record<string, string | undefined> = process.env): boolean {
+  const n = Number(env.MAIN_CAPTION_KEYWORD);
+  if (!Number.isInteger(n) || n < 1) return false;
+  let h = 19;
+  for (const c of articleId) h = (h * 41 + c.charCodeAt(0)) >>> 0;
+  return h % n === 0;
+}

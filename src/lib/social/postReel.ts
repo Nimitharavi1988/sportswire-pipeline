@@ -1,7 +1,7 @@
 import { categoryEmoji } from "@/lib/categoryDisplay";
 import { socialArticleUrl } from "./trackedLink";
 import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
-import { withSportKeyword } from "./reelKeyword";
+import { mainKeywordOn, withSportKeyword } from "./reelKeyword";
 import { graphErrorDetail, recoverPublishedReel } from "./igPublishRecovery";
 import { decodeHtmlEntities } from "../htmlEntities";
 import { unknownNames } from "./speechNames";
@@ -160,7 +160,7 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
   const cta = spanish
     ? "💬 ¿Qué opinas? Cuéntanos en los comentarios\n👉 Toda la información — enlace en la bio\n🔔 Síguenos para más noticias deportivas"
     : `💬 What's your take? Tell us in the comments\n👉 Full breakdown — link in bio\n🔔 ${topicPage ? "Follow us for daily sports news" : "Follow @sportswirelivenews for daily sports news"}`;
-  const leadText = withTopicKeyword(captions?.instagram ?? article.title, article.category, topicPage);
+  const leadText = withTopicKeyword(captions?.instagram ?? article.title, article.category, topicPage, article.id);
   // Topic Pages without their own question test: the closing question goes first (questionFirst, 2026-10-28).
   const caption = `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(leadText) : leadText}\n\n${cta}${creditLine}\n\n${hashtags}`;
   const tags = reelTagsFor(article.title, article.category);
@@ -235,8 +235,10 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
 // main Page — its own token and posting history, and a caption that points
 // viewers at the Page (Follow) as well as the article.
 // Topic Pages (English) put the sport in the caption's first sentence when it is missing (reelKeyword.ts); the main Page and the Spanish Page keep their text.
-function withTopicKeyword(text: string, category: string, topicPage?: FacebookDestination): string {
-  return topicPage ? withSportKeyword(text, category, topicPage.locale === "es" ? "es" : "en") : text;
+// The main Page and main Instagram get it for a share of their stories only (MAIN_CAPTION_KEYWORD, reelKeyword.ts mainKeywordOn), a test against the rest.
+function withTopicKeyword(text: string, category: string, topicPage?: FacebookDestination, articleId?: string): string {
+  if (!topicPage) return articleId && mainKeywordOn(articleId) ? withSportKeyword(text, category, "en") : text;
+  return withSportKeyword(text, category, topicPage.locale === "es" ? "es" : "en");
 }
 
 async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, captions: SocialCaptions | null, articleUrl: string, topicPage?: FacebookDestination, shortCaption = false): Promise<boolean> {
@@ -253,8 +255,8 @@ async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, cap
   // own question-ending test): half the stories get just the opening sentence and no link (the photo credit and
   // hashtags stay); the other half keep the usual caption.
   const description = shortCaption
-    ? `${emoji} ${shortReelCaption(withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage))}${creditLine}\n\n${hashtags}`
-    : `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage)) : withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage)}\n\n${spanish ? "Toda la información" : "Full breakdown"}: ${articleUrl}${creditLine}\n\n${hashtags}`;
+    ? `${emoji} ${shortReelCaption(withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage, article.id))}${creditLine}\n\n${hashtags}`
+    : `${emoji} ${topicPage && !topicPage.reelCaptionTest ? questionFirst(withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage, article.id)) : withTopicKeyword(captions?.facebook ?? article.title, article.category, topicPage, article.id)}\n\n${spanish ? "Toda la información" : "Full breakdown"}: ${articleUrl}${creditLine}\n\n${hashtags}`;
 
   return recordAttempt(article, "facebook", async () => {
     console.log("[facebook reel] Starting upload...");
@@ -454,7 +456,7 @@ export async function postReel(
   const youtubeVoice = needYouTube && voiceLanguage && !voicePath && youtubeVoiceOn(process.env, voiceLanguage, article.id) ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook, voiceLanguage), buildShortScript(content, article.category, voiceLanguage), pickVoice(article.id, voiceLanguage), voiceSeed) : null;
   const youtubeVoicePath = voicePath ?? youtubeVoice?.path ?? null;
   if (youtubeVoice) console.log(`[voiceover] YouTube Short only, ${youtubeVoice.seconds.toFixed(1)} s: ${youtubeVoice.text}`);
-  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null, youtubeVoice: Boolean(youtubeVoicePath), layout: layoutKind, noPhoto: isFallbackCard(article.heroImageUrl) }));
+  setDecisionContext(article.id, reelFeatures({ category: article.category, title: article.title, hashtags: (opts.topicPage?.hashtags ?? selectFacebookHashtags)(article.title, article.category), publishedAt: article.publishedAt, trendingScore: article.trendingScore ?? null, now: new Date(), theme, music, font: opts.font, language: locale, topicKey: opts.topicPage?.key, captionVariant: captionVariantFor(articleId), hook: content.hook, factRows: content.rows.length, storyType, hookMeta: content.hookMeta, opening, voice: voicePath ? voiceName : null, youtubeVoice: Boolean(youtubeVoicePath), layout: layoutKind, noPhoto: isFallbackCard(article.heroImageUrl), captionKeyword: opts.topicPage ? null : mainKeywordOn(article.id) }));
   console.log(`Rendering reel (music: ${music}, theme: ${theme ?? "default"}, font: ${opts.font ?? "default"})...`);
   // The score of the match the story is about, when it is clearly one live or just finished (reelScore.ts); the original English headline names the teams.
   if (score) console.log(`[reel] score strip: ${score.home} ${score.homeScore} - ${score.awayScore} ${score.away} (${score.label})`);
