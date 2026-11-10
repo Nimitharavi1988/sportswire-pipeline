@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import { shortReelCaption } from "./captionVariant";
+import { readableDescription } from "./sentences";
 import { sportKeywordFor, withSportKeyword } from "./reelKeyword";
 import { applySpeechNames } from "./speechNames";
 import { speakScores } from "./speechScores";
@@ -42,7 +43,8 @@ export function youtubeVoiceOn(env: Record<string, string | undefined> = process
   return voiceoverPages(env).includes("youtube");
 }
 
-// Half the stories (by id) of a listed Page get the voice, the rest stay silent as the comparison.
+// Half the stories (by id) of a listed Page get the voice, the rest stay silent as the comparison. The main Page and main Instagram
+// reels count as the Page "main" (2026-11-10): list it in VOICEOVER_PAGES to voice half of them.
 export function voiceoverFor(topicKey: string | undefined, articleId: string, env: Record<string, string | undefined> = process.env): boolean {
   if (!topicKey || !voiceoverPages(env).includes(topicKey)) return false;
   let h = 7;
@@ -83,9 +85,13 @@ export const forVoice = (spoken: string) => applySpeechNames(spoken);
 
 // The story's description read aloud: its first sentence (cut at a clause break if long), opened with "In cricket," when that
 // sentence never names the sport. Without a description, the on-screen hook. At most about 30 words.
+// About 10 seconds of speech: the reel is 11.8 s long and the voice must end before the end card (makeVoice retries faster, then shorter).
+export const VOICE_WORDS = 28;
+
 export function buildVoiceScript(content: { hook: string }, category: string, description?: string | null): string {
   const lead = spokenLead(category);
-  const base = description?.trim() ? shortReelCaption(description, 26) : content.hook;
+  // Whole sentences of the description, as many as fit (sentences.ts), then the on-screen hook when nothing readable is left.
+  const base = (description?.trim() ? readableDescription(description, VOICE_WORDS, shortReelCaption) : "") || content.hook;
   const sentence = spokenText(base, category);
   const needsLead = lead && withSportKeyword(sentence, category) !== sentence;
   return forVoice(needsLead ? `${lead} ${afterOpener(sentence)}` : sentence);

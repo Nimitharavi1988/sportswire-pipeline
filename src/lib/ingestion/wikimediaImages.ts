@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "../htmlEntities";
 /**
  * Real photos of named athletes/officials, sourced from Wikimedia Commons —
  * used as a fallback tier ahead of the generic category stock photo, for RSS
@@ -38,7 +39,8 @@ export function isFreeLicense(licenseShortName: string): boolean {
 }
 
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]+>/g, "").trim();
+  // Entities decoded too: Commons' Artist field is HTML, so "Maize & Blue Nation" arrived as "Maize &amp; Blue Nation" (119 stored credits).
+  return decodeHtmlEntities(html.replace(/<[^>]+>/g, "")).trim();
 }
 
 function normalizeTokens(name: string): string[] {

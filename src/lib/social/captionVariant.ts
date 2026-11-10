@@ -1,3 +1,4 @@
+import { splitSentences } from "./sentences";
 // A/B split for caption tests: each story gets "hook" or "control" by its id, so
 // the two versions run side by side on the same Page and the same days, and the
 // version a story got can be recomputed later (no database field needed).
@@ -17,7 +18,7 @@ export function captionVariantFor(articleId: string): CaptionVariant {
 export function shortReelCaption(caption: string, maxWords = 22): string {
   const flat = caption.replace(/\s+/g, " ").trim();
   // Sentences end at . ! or ? and a space; a fragment under 8 words ("... to No.") is joined to the next one.
-  const parts = flat.split(/(?<=[.!?])\s+/);
+  const parts = splitSentences(flat);
   let first = parts[0] ?? "";
   for (let k = 1; first.split(" ").length < 8 && k < parts.length; k++) first += " " + parts[k];
   const words = first.split(" ");

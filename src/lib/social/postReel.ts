@@ -3,6 +3,7 @@ import { socialArticleUrl } from "./trackedLink";
 import { captionVariantFor, questionFirst, shortReelCaption } from "./captionVariant";
 import { withSportKeyword } from "./reelKeyword";
 import { graphErrorDetail, recoverPublishedReel } from "./igPublishRecovery";
+import { decodeHtmlEntities } from "../htmlEntities";
 import { unknownNames } from "./speechNames";
 import { buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor, youtubeVoiceOn } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
@@ -150,7 +151,7 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
   // Same caption shape as the Instagram poster (socialPoster.ts), plus a
   // comment prompt matching the reel's end card.
   const emoji = categoryEmoji(article.category);
-  const creditLine = article.heroImageCredit ? `\n\n📷 ${article.heroImageCredit}` : "";
+  const creditLine = article.heroImageCredit ? `\n\n📷 ${decodeHtmlEntities(article.heroImageCredit)}` : "";
   // 4 specific tags + brand: more than that reads as spam and adds no reach.
   const spanish = topicPage?.locale === "es";
   const hashtagList = spanish && topicPage?.hashtags ? topicPage.hashtags(article.title, article.category).slice(0, 5) : topicPage ? selectTopicInstagramHashtags(article.title, article.category, 4) : selectInstagramHashtags(article.title, article.category, 4);
@@ -245,7 +246,7 @@ async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, cap
   const accessToken = await resolvePageAccessToken(pageId, rawToken);
 
   const emoji = categoryEmoji(article.category);
-  const creditLine = article.heroImageCredit ? `\n\n📷 ${article.heroImageCredit}` : "";
+  const creditLine = article.heroImageCredit ? `\n\n📷 ${decodeHtmlEntities(article.heroImageCredit)}` : "";
   const hashtags = (topicPage?.hashtags ? topicPage.hashtags(article.title, article.category) : selectFacebookHashtags(article.title, article.category)).join(" ");
   const spanish = topicPage?.locale === "es";
   // The caption test (captionVariant.ts), on the main Page and every topic Page except Greenfield (which has its
@@ -436,8 +437,8 @@ export async function postReel(
   // What this reel was made with, recorded with its outcome by recordAttempt (decisionLog.ts).
   // The reel's opening: half the stories get the fast one, half the classic (the control); recorded in the decision log.
   const opening = openingFor(article.id);
-  // Voice pilot (voiceover.ts): English reels of the listed topic Pages, half the stories; never the main Page. Silent on any failure.
-  const voiceName = !locale && opts.topicPage && voiceoverFor(opts.topicPage.key, article.id) ? pickVoice(article.id) : null;
+  // Voice (voiceover.ts): English reels of the listed Pages, half the stories; the main Page is the key "main". Silent on any failure.
+  const voiceName = !locale && voiceoverFor(opts.topicPage ? opts.topicPage.key : "main", article.id) ? pickVoice(article.id) : null;
   const voiceSeed = [...article.id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 17);
   const voice = voiceName ? await makeVoice(buildVoiceScript(content, article.category, captions?.facebook), buildShortScript(content, article.category), voiceName, voiceSeed) : null;
   const voicePath = voice?.path ?? null;

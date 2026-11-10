@@ -1,3 +1,4 @@
+import { decodeHtmlEntities } from "../htmlEntities";
 // YouTube Shorts upload (YouTube Data API v3, resumable upload). A Short is just
 // a vertical video of 3 minutes or less, so it's the same MP4 the Instagram and
 // Facebook reels use. Off unless YOUTUBE_SHORTS_ENABLED=1 and the OAuth
@@ -345,7 +346,7 @@ export function shortsDescription(summary: string, hashtags: string[], language:
   const tags = [...own, "#Shorts"];
   const ask = language === "es" ? "¿Qué opinas? Cuéntanos en los comentarios." : "What's your take? Tell us in the comments.";
   const follow = language === "es" ? "Suscríbete a Sports Wire Live en Español para noticias deportivas diarias." : "Follow The Sports Live Wire for daily sports news.";
-  const credit = photoCredit && !/https?:\/\//i.test(photoCredit) ? `📷 ${photoCredit}\n\n` : "";
+  const credit = photoCredit && !/https?:\/\//i.test(photoCredit) ? `📷 ${decodeHtmlEntities(photoCredit)}\n\n` : "";
   return `${summary.trim()}\n\n${ask}\n\n${credit}${follow}\n\n${tags.join(" ")}`;
 }
 

@@ -20,6 +20,7 @@ import { teamBadgeColor, teamBadgeLetters, teamCode } from "../teamBadge";
 const execFileAsync = promisify(execFile);
 
 import type { ReelScore } from "./reelScore";
+import { decodeHtmlEntities } from "../htmlEntities";
 import { columnDetail, cropFit, cropKeepsSubject } from "./reelCropFit";
 import { OPENING_TIMING, OPENING_MOTION, FAST_HOOK_SCALE, motionExpr, punchExpr, type Opening } from "./reelOpening";
 const W = 1080;
@@ -571,7 +572,7 @@ export async function renderReel(params: {
     const textPaths = texts.map((_, i) => join(workDir, `layer-text-${i + 1}.png`));
     const endPath = join(workDir, "layer-end.png");
     const [chromePng, endPng, ...textPngs] = await Promise.all([
-      renderLayer(<ChromeLayer th={th} credit={params.language === "es" ? params.credit?.replace(/^Photo via /i, "Foto vía ").replace(/^Photo: /i, "Foto: ") : params.credit} darkFrom={darkFrom} darkTo={darkTo} darkEnd={darkEnd} portrait={Boolean(cropped)} score={animateHook ? null : params.score} />, fonts),
+      renderLayer(<ChromeLayer th={th} credit={params.language === "es" ? params.credit && decodeHtmlEntities(params.credit).replace(/^Photo via /i, "Foto vía ").replace(/^Photo: /i, "Foto: ") : params.credit && decodeHtmlEntities(params.credit)} darkFrom={darkFrom} darkTo={darkTo} darkEnd={darkEnd} portrait={Boolean(cropped)} score={animateHook ? null : params.score} />, fonts),
       renderLayer(<EndCard th={th} language={params.language} followHandle={params.followHandle} youtube={params.youtube} />, fonts),
       ...texts.map((s) => renderLayer(s.node, fonts)),
     ]);
