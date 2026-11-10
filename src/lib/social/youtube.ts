@@ -1,4 +1,6 @@
 import { decodeHtmlEntities } from "../htmlEntities";
+import { isCallToAction, splitSentences } from "./sentences";
+import { withSportKeyword } from "./reelKeyword";
 // YouTube Shorts upload (YouTube Data API v3, resumable upload). A Short is just
 // a vertical video of 3 minutes or less, so it's the same MP4 the Instagram and
 // Facebook reels use. Off unless YOUTUBE_SHORTS_ENABLED=1 and the OAuth
@@ -333,10 +335,25 @@ export function decorateShortsTitle(title: string, emoji: string | null | undefi
   return title;
 }
 
-export function shortsTitleFor(hook: string | null | undefined, headline: string, language: "en" | "es" = "en"): string {
+// The sport or competition in the title (2026-11-10: 2% of English and 0% of Spanish Shorts titles named one, though a search is for "NFL",
+// "Premier League" or "cricket"). Added as a suffix so the hook still leads: "Messi: 26 goals | Football". Only when the title has no such
+// word yet and the result stays within 60 characters. Pure, unit-tested.
+const TITLE_SPORT: Record<"en" | "es", Record<string, string>> = {
+  en: { football: "Football", cricket: "Cricket", "american-football": "NFL", "college-football": "College Football", basketball: "NBA", wnba: "WNBA", baseball: "MLB", hockey: "NHL", mma: "MMA", boxing: "Boxing", tennis: "Tennis", golf: "Golf", "formula-1": "F1", rugby: "Rugby", volleyball: "Volleyball", motogp: "MotoGP", cycling: "Cycling" },
+  es: { football: "Fútbol", cricket: "Críquet", "american-football": "NFL", "college-football": "Fútbol universitario", basketball: "NBA", wnba: "WNBA", baseball: "Béisbol", hockey: "NHL", mma: "MMA", boxing: "Boxeo", tennis: "Tenis", golf: "Golf", "formula-1": "F1", rugby: "Rugby", volleyball: "Voleibol", motogp: "MotoGP", cycling: "Ciclismo" },
+};
+const SPORT_IN_TITLE = /\b(football|soccer|cricket|nfl|nba|wnba|mlb|nhl|ufc|mma|boxing|tennis|golf|f1|formula 1|rugby|volleyball|motogp|cycling|ipl|premier league|champions league|la liga|bundesliga|serie a|ligue 1|mls|t20|odi|f[uú]tbol|cr[ií]quet|b[eé]isbol|boxeo|tenis|liga|voleibol|ciclismo)\b/i;
+export function titleWithSport(title: string, category: string | null | undefined, language: "en" | "es" = "en", max = 60): string {
+  const label = TITLE_SPORT[language][(category ?? "").toLowerCase().split("/")[0]];
+  if (!label || SPORT_IN_TITLE.test(title)) return title;
+  const out = `${title.replace(/[.!?\s]+$/, "")} | ${label}`;
+  return out.length <= max ? out : title;
+}
+
+export function shortsTitleFor(hook: string | null | undefined, headline: string, language: "en" | "es" = "en", category?: string | null): string {
   const h = fixShoutedTitle((hook ?? "").replace(/\s+/g, " ").trim(), headline, language);
   // A hook that names nobody (or is tiny) is replaced by the headline, which always does.
-  return shortsTitle(h.length >= 12 && hookNamesSomeone(h, headline) ? h : headline);
+  return titleWithSport(shortsTitle(h.length >= 12 && hookNamesSomeone(h, headline) ? h : headline), category, language);
 }
 
 // YouTube rules (2026-10-29): no link in the description (YouTube holds back Shorts that link off the platform), and at most
@@ -347,7 +364,12 @@ export function shortsDescription(summary: string, hashtags: string[], language:
   const ask = language === "es" ? "¿Qué opinas? Cuéntanos en los comentarios." : "What's your take? Tell us in the comments.";
   const follow = language === "es" ? "Suscríbete a Sports Wire Live en Español para noticias deportivas diarias." : "Follow The Sports Live Wire for daily sports news.";
   const credit = photoCredit && !/https?:\/\//i.test(photoCredit) ? `📷 ${decodeHtmlEntities(photoCredit)}\n\n` : "";
-  return `${summary.trim()}\n\n${ask}\n\n${credit}${follow}\n\n${tags.join(" ")}`;
+  // The summary is the caption text: its own "Click the link to read the full story" pointed at a link that is not here (88% of English and
+  // 96% of Spanish descriptions, 2026-11-10), so those sentences go, the sport leads the first sentence, and a plain pointer replaces them.
+  const kept = splitSentences(summary).filter((s) => !isCallToAction(s)).join(" ").trim() || summary.trim();
+  const lead = story?.category ? withSportKeyword(kept, story.category, language) : kept;
+  const pointer = language === "es" ? "Nota completa en Sports Wire Live." : "Full story on Sports Wire Live.";
+  return `${lead}\n\n${pointer}\n\n${ask}\n\n${credit}${follow}\n\n${tags.join(" ")}`;
 }
 
 async function accessToken(refreshToken: string): Promise<string> {

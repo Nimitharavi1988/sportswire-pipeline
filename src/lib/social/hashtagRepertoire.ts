@@ -198,6 +198,17 @@ export function selectSpanishHashtags(title: string, category: string): string[]
   return [...new Set([sport, topic, FACEBOOK_BRAND_TAG].filter((t): t is string => Boolean(t)))].slice(0, 3);
 }
 
+// The Spanish Instagram account (2026-11-10): Instagram allows 5 tags and the Spanish reels carried 2.8 on average. Event, then the
+// names and competitions the headline carries, then the sport in Spanish, up to four, plus the brand tag. #Deportes only as a last resort.
+export function selectSpanishInstagramHashtags(title: string, category: string, limit = 4): string[] {
+  const sport = SPANISH_SPORT_TAGS[category] ?? SPANISH_SPORT_TAGS[category.split("/")[0]];
+  const event = eventFor(title)?.tag;
+  const names = [...topicTags(title, category).specifics, ...specificTags(title, category)];
+  const tags = [...new Set([...(event ? [event] : []), ...names.slice(0, 2), ...(sport ? [sport] : []), ...names.slice(2)])].filter((t) => t !== FACEBOOK_BRAND_TAG);
+  if (tags.length < 2) tags.push("#Deportes");
+  return [...new Set(tags)].slice(0, limit).concat(FACEBOOK_BRAND_TAG);
+}
+
 // Topic Pages and accounts without their own tag rules (US sports, Football, and the Instagram posts of every topic account):
 // one star/team/event tag and the sport's own tag, then the usual tags, then the brand tag (3 on Facebook, 4 + brand on Instagram).
 // The main Page and main Instagram keep selectFacebookHashtags / selectInstagramHashtags.

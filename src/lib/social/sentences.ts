@@ -23,8 +23,10 @@ export function splitSentences(text: string): string[] {
   return out;
 }
 
-export const isCallToAction = (s: string) =>
-  /\b(click|tap|swipe)\b|\bread (the )?(full|more)\b|\bfull (story|breakdown)\b|\blink (below|in (the )?(bio|description|comments))\b|\btell us\b|\bin the comments\b|\bfollow (us|@)|\bsubscribe\b|\bwhat'?s your take\b/i.test(s);
+const CTA_EN = /\b(click|tap|swipe)\b|\bread (the )?(full|more)\b|\bfull (story|breakdown)\b|\blink (below|in (the )?(bio|description|comments))\b|\btell us\b|\bin the comments\b|\bfollow (us|@)|\bsubscribe\b|\bwhat'?s your take\b/i;
+// The same closing lines in Spanish (the Spanish Page's captions): "Haz clic en el enlace...", "Cuéntanos en los comentarios", "Síguenos".
+const CTA_ES = /haz (clic|click)|toca el enlace|enlace (de abajo|en la (bio|descripci[oó]n))|(lee|leer) la nota completa|nota completa|cu[eé]ntanos|en los comentarios|s[ií]guenos|suscr[ií]bete|qu[eé] opinas/i;
+export const isCallToAction = (s: string) => CTA_EN.test(s) || CTA_ES.test(s);
 
 const words = (s: string) => s.split(/\s+/).filter(Boolean).length;
 

@@ -25,7 +25,7 @@ import { musicStyleFor, type ReelMusicStyle } from "./reelMusic";
 import { reelThemeForLayout, type ReelTheme, type ReelFont } from "./reelThemes";
 import { resolvePageAccessToken, translationFor } from "./facebook";
 import { LOCALES } from "@/lib/i18n/locales";
-import { selectInstagramHashtags, selectFacebookHashtags, selectTopicInstagramHashtags } from "./hashtagRepertoire";
+import { selectInstagramHashtags, selectFacebookHashtags, selectTopicInstagramHashtags, selectSpanishInstagramHashtags } from "./hashtagRepertoire";
 import { reelTagsFor } from "./reelTags";
 import { instagramCoolingDown } from "./metaCooldown";
 import { logDecision, setDecisionContext, clearDecisionContext, decisionContextFor } from "./decisionLog";
@@ -154,7 +154,7 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
   const creditLine = article.heroImageCredit ? `\n\n📷 ${decodeHtmlEntities(article.heroImageCredit)}` : "";
   // 4 specific tags + brand: more than that reads as spam and adds no reach.
   const spanish = topicPage?.locale === "es";
-  const hashtagList = spanish && topicPage?.hashtags ? topicPage.hashtags(article.title, article.category).slice(0, 5) : topicPage ? selectTopicInstagramHashtags(article.title, article.category, 4) : selectInstagramHashtags(article.title, article.category, 4);
+  const hashtagList = spanish && topicPage?.hashtags ? selectSpanishInstagramHashtags(article.title, article.category) : topicPage ? selectTopicInstagramHashtags(article.title, article.category, 4) : selectInstagramHashtags(article.title, article.category, 4);
   // Instagram allows 5 tags. A cricket topic reel keeps its 3 most specific, swaps the 4th for the format tag, and ends with the brand tag.
   const hashtags = (topicPage && !spanish && article.category.startsWith("cricket") ? [...hashtagList.slice(0, 3), "#CricketReels", ...hashtagList.slice(-1)] : hashtagList).filter((t, i, all) => all.indexOf(t) === i).join(" ");
   const cta = spanish
@@ -236,7 +236,7 @@ async function postReelToInstagram(article: ArticleWithVertical, mp4: Buffer, ca
 // viewers at the Page (Follow) as well as the article.
 // Topic Pages (English) put the sport in the caption's first sentence when it is missing (reelKeyword.ts); the main Page and the Spanish Page keep their text.
 function withTopicKeyword(text: string, category: string, topicPage?: FacebookDestination): string {
-  return topicPage && topicPage.locale !== "es" ? withSportKeyword(text, category) : text;
+  return topicPage ? withSportKeyword(text, category, topicPage.locale === "es" ? "es" : "en") : text;
 }
 
 async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, captions: SocialCaptions | null, articleUrl: string, topicPage?: FacebookDestination, shortCaption = false): Promise<boolean> {
@@ -292,7 +292,7 @@ async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, cap
 async function postReelToYouTube(article: ArticleWithVertical, mp4: Buffer, captions: SocialCaptions | null, articleUrl: string, hook: string, title0: string, topicPage?: FacebookDestination): Promise<boolean> {
   const spanish = topicPage?.locale === "es";
   const hashtags = topicPage?.hashtags ? topicPage.hashtags(title0, article.category) : selectFacebookHashtags(title0, article.category);
-  const plainTitle = shortsTitleFor(hook, title0, spanish ? "es" : "en");
+  const plainTitle = shortsTitleFor(hook, title0, spanish ? "es" : "en", article.category);
   // Title: under 60 characters, names first, no emoji or hashtags (YouTube rules, 2026-10-29; the decorated-title test is over).
   const title = plainTitle;
   const description = shortsDescription(captions?.facebook ?? title0, hashtags, spanish ? "es" : "en", article.heroImageCredit, { category: article.category, title: plainTitle });
