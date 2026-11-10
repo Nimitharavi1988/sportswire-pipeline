@@ -1,5 +1,6 @@
 import { db } from "@/db";
-import { article, socialPost } from "@/db/schema";
+import { article, socialPost, postDecision } from "@/db/schema";
+import { reelSkippedIds } from "../social/reelRetry";
 import { eq, and, or, inArray, notInArray, gte, lt, like, count, desc } from "drizzle-orm";
 import { TOPIC_INSTAGRAM_KEYS } from "../social/facebookDestinations";
 import { instagramPhotoRoom, mainInstagramPhotoCap } from "../social/topicInstagramCap";
@@ -603,9 +604,13 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
     recentIgCategories,
     isMatchDataSource
   );
-  const igEligible = igByTrending.filter((a) => isHighlightWorthy(a.title));
+  // Stories the reel step already skipped (too old, or no reel copy a moment ago) wait, so the next ones in the pool get their turn.
+  const reelSkipRows = await db.select({ articleId: postDecision.articleId, reason: postDecision.reason, createdAt: postDecision.createdAt }).from(postDecision)
+    .where(and(eq(postDecision.platform, "instagram"), eq(postDecision.kind, "reel"), eq(postDecision.outcome, "skipped"), gte(postDecision.createdAt, new Date(Date.now() - 24 * 3_600_000))));
+  const reelHeldBack = reelSkippedIds(reelSkipRows, new Date());
+  const igEligible = igByTrending.filter((a) => isHighlightWorthy(a.title) && !reelHeldBack.has(a.id));
   const instagramMaxAttempts = instagramRunCap > 0 ? Math.max(instagramRunCap, MIN_INSTAGRAM_ATTEMPTS_PER_RUN) : 0;
-  const instagramCandidates = selectTopN(instagramMaxAttempts, igByTrending, igEligible, igRecentTitles, false);
+  const instagramCandidates = selectTopN(instagramMaxAttempts, igByTrending.filter((a) => !reelHeldBack.has(a.id)), igEligible, igRecentTitles, false);
   console.log(
     `[instagram] postedToday=${instagramPostedToday} remainingToday=${instagramRemainingToday} runCap=${instagramRunCap} igPool=${igPool.length} candidates=${instagramCandidates.length}`
   );
