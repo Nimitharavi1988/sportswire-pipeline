@@ -101,7 +101,9 @@ const MAX_INSTAGRAM_POSTS_PER_DAY = 95;
 // the Reels tab sat empty for the rest of the day. Now paced across the day (below).
 // Trimmed 40 -> 30 (2026-10-11): Meta's app-wide call limit ("Application request limit reached") was
 // failing ~90 Instagram posts a day, and every Facebook and Instagram call shares that limit.
-const MAX_FACEBOOK_REELS_PER_DAY = 30;
+// Trimmed 30 -> 24 (2026-11-10, user): the Page's reels reached a median of 1-2 plays a day on Facebook (against about 140 on Instagram for the
+// same videos), so fewer, stronger ones. Facebook link posts stay as they are (they lead to the site). Instagram and YouTube reels are separate.
+const MAX_FACEBOOK_REELS_PER_DAY = 24;
 // Ceiling on ATTEMPTS within a single run (not just successes) — each
 // attempt is a full Gemini content-generation call plus a real git
 // commit/push/deploy-wait cycle, far more expensive than Facebook's plain
