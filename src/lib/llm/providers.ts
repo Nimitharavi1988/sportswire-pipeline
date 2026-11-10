@@ -39,6 +39,8 @@ export interface Slot {
   tiers: Tier[];
   limits: Limits;
   budgetKey: string;
+  // Slots that share one per-minute allowance (Mistral's plan limit is per account, not per model) pace against this key.
+  paceKey?: string;
   resetHourUtc: number;
   paid: boolean;
   // Gemini Flash spends output tokens on hidden reasoning unless told not
@@ -136,7 +138,9 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
     slots.push(groq("qwen/qwen3.8-27b", ["lite", "standard"]));
   }
 
-  // Mistral's free plan (checked 2026-10-04 with the account's own limits page
+  // Mistral's free plan: a live call on 2026-11-10 returned x-ratelimit-limit-req-minute=2 and 40,000 tokens a minute for BOTH models
+  // (one allowance per account), not the 28 and 150 a minute assumed below; calling faster got 429s and a day-long block.
+  // (earlier check, 2026-10-04 with the account's own limits page
   // and live calls): ministral-14b-2512 answers (30 requests/min, ~940k
   // tokens/min); mistral-small-2603 is limited to 0 and mistral-large to
   // "not allowed" on this plan, so only the Ministral model is used. A smaller
@@ -149,8 +153,8 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
     slots.push({
       id: "mistral ministral-14b-2512", provider: "openai", baseUrl: "https://api.mistral.ai/v1", apiKey: mistralKey,
       model: "ministral-14b-2512", tiers: ["lite", "standard"],
-      limits: { rpm: num(env.MISTRAL_RPM, 28), rpd: num(env.MISTRAL_RPD, 4000), tpm: num(env.MISTRAL_TPM, 800000) },
-      budgetKey: "mistral/ministral-14b-2512", resetHourUtc: 0, paid: false, maxTokensParam: "max_tokens",
+      limits: { rpm: num(env.MISTRAL_RPM, 2), rpd: num(env.MISTRAL_RPD, 4000), tpm: num(env.MISTRAL_TPM, 40000) },
+      budgetKey: "mistral/ministral-14b-2512", paceKey: "mistral", resetHourUtc: 0, paid: false, maxTokensParam: "max_tokens",
     });
   }
 
@@ -162,8 +166,8 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
     slots.push({
       id: "mistral ministral-8b-2512", provider: "openai", baseUrl: "https://api.mistral.ai/v1", apiKey: mistralKey,
       model: "ministral-8b-2512", tiers: ["lite", "standard"],
-      limits: { rpm: num(env.MISTRAL_8B_RPM, 150), rpd: num(env.MISTRAL_8B_RPD, 4000), tpm: num(env.MISTRAL_8B_TPM, 500000) },
-      budgetKey: "mistral/ministral-8b-2512", resetHourUtc: 0, paid: false, maxTokensParam: "max_tokens",
+      limits: { rpm: num(env.MISTRAL_8B_RPM, 2), rpd: num(env.MISTRAL_8B_RPD, 4000), tpm: num(env.MISTRAL_8B_TPM, 40000) },
+      budgetKey: "mistral/ministral-8b-2512", paceKey: "mistral", resetHourUtc: 0, paid: false, maxTokensParam: "max_tokens",
     });
   }
 

@@ -179,13 +179,13 @@ export class LlmRouter {
     const blocked = checkBudget(block, {}, priority, est, now);
     if (!blocked.ok) return { reason: blocked.reason };
 
-    const wait = this.pacer.waitMs(slot.budgetKey, slot.limits, est, now);
+    const wait = this.pacer.waitMs(slot.paceKey ?? slot.budgetKey, slot.limits, est, now);
     if (wait > MAX_PACING_WAIT_MS || this.waited + wait > this.maxTotalWaitMs) return { reason: `busy for ${Math.ceil(wait / 1000)}s` };
     if (wait > 0) {
       this.waited += wait;
       await this.sleep(wait);
     }
-    this.pacer.record(slot.budgetKey, est, this.now());
+    this.pacer.record(slot.paceKey ?? slot.budgetKey, est, this.now());
     return { budget, block };
   }
 
