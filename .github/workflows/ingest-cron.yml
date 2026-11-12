@@ -112,6 +112,7 @@ jobs:
           FALLBACK_CARD_CATEGORIES: ${{ vars.FALLBACK_CARD_CATEGORIES }}
           MAIN_CAPTION_KEYWORD: ${{ vars.MAIN_CAPTION_KEYWORD }}
           REGION_SCHEDULE: ${{ vars.REGION_SCHEDULE }}
+          REEL_PACING: ${{ vars.REEL_PACING }}
           INSTAGRAM_PAUSED_ACCOUNTS: ${{ vars.INSTAGRAM_PAUSED_ACCOUNTS }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           SITE_URL: ${{ vars.SITE_URL }}

@@ -7,6 +7,7 @@ import { decodeHtmlEntities } from "../htmlEntities";
 import { unknownNames } from "./speechNames";
 import { voiceSource, buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor, youtubeVoiceOn } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
+import { YOUTUBE_EN_CURVE, curveAllows, reelPacingOn } from "./reelPacing";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
 import { loadScoreStrip } from "./reelScore";
@@ -391,7 +392,16 @@ export async function postReel(
   if (needYouTube) {
     const [{ value: lastDay, last }] = await db.select({ value: count(), last: max(socialPostTable.postedAt) }).from(socialPostTable)
       .where(and(eq(socialPostTable.platform, "youtube"), ytChannel === "es" ? eq(socialPostTable.destination, spanishYtKey) : ne(socialPostTable.destination, spanishYtKey), eq(socialPostTable.status, "posted"), gte(socialPostTable.postedAt, new Date(Date.now() - 24 * 3600 * 1000))));
+    // The English channel's Shorts follow their own hourly curve (reelPacing.ts): most go out 00:00-09:00 UTC, where they got views.
+    let ytTodayOk = true;
+    if (ytChannel !== "es" && reelPacingOn()) {
+      const utcMidnight = new Date(); utcMidnight.setUTCHours(0, 0, 0, 0);
+      const [{ value: ytToday }] = await db.select({ value: count() }).from(socialPostTable)
+        .where(and(eq(socialPostTable.platform, "youtube"), ne(socialPostTable.destination, spanishYtKey), eq(socialPostTable.status, "posted"), gte(socialPostTable.postedAt, utcMidnight)));
+      ytTodayOk = curveAllows(YOUTUBE_EN_CURVE, maxShortsPerDayFor("en"), ytToday, new Date());
+    }
     if (!youtubeSlotOpen(lastDay, last, new Date(), maxShortsPerDayFor(ytChannel ?? "en"), minGapMinutes())) { needYouTube = false; whySkipped.push("youtube pacing: daily cap or minimum gap"); }
+    else if (!ytTodayOk) { needYouTube = false; whySkipped.push("youtube pacing: ahead of the hourly curve"); }
     else if (!youtubeSportAllowed(ytChannel ?? "en", article.category, lastDay, maxShortsPerDayFor(ytChannel ?? "en"), priorityReserve())) { console.log(`[youtube short] skipped: ${article.category} waits for a free slot (the last ${priorityReserve()} of ${maxShortsPerDayFor(ytChannel ?? "en")} a day go to the best-performing sports)`); needYouTube = false; whySkipped.push(`youtube: ${article.category} waits for a free slot`); }
   }
   if (needYouTube) {

@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { article, socialPost, postDecision } from "@/db/schema";
 import { indiaAwake, regionTimingWeight } from "../social/regionSchedule";
+import { FACEBOOK_REEL_CURVE, curveTarget, reelPacingOn } from "../social/reelPacing";
 import { reelSkippedIds } from "../social/reelRetry";
 import { reelSportWeight, reelSportWeights } from "../social/reelSportWeight";
 import { eq, and, or, inArray, notInArray, gte, lt, like, count, desc } from "drizzle-orm";
@@ -669,7 +670,11 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
     .where(and(eq(socialPost.platform, "facebook"), eq(socialPost.destination, "reel"), eq(socialPost.status, "posted"), gte(socialPost.postedAt, todayStart)));
   // Paced like the link posts: the day's reels follow the hourly engagement weights
   // (+1 so the day can start), instead of all going out in the first hours.
-  const facebookReelsPaceTarget = Math.round((MAX_FACEBOOK_REELS_PER_DAY * weightedRunsElapsed(currentRunIndex)) / TOTAL_HOURLY_WEIGHT) + 1;
+  // Reels follow their own curve (social/reelPacing.ts): most of the day's reels go out 06:00-15:00 UTC, where the Page's India-based followers are awake
+  // and its reels got views; REEL_PACING=off restores the link posts' curve.
+  const facebookReelsPaceTarget = reelPacingOn()
+    ? Math.round(curveTarget(FACEBOOK_REEL_CURVE, MAX_FACEBOOK_REELS_PER_DAY, now)) + 1
+    : Math.round((MAX_FACEBOOK_REELS_PER_DAY * weightedRunsElapsed(currentRunIndex)) / TOTAL_HOURLY_WEIGHT) + 1;
   let facebookReelsRemaining = Math.max(0, Math.min(MAX_FACEBOOK_REELS_PER_DAY, facebookReelsPaceTarget) - facebookReelsToday);
   // The photo (poster) fallback has its own small daily limit (topicInstagramCap.ts): reels are what reach people.
   const [{ value: instagramPhotosToday }] = await db.select({ value: count() }).from(socialPost)
