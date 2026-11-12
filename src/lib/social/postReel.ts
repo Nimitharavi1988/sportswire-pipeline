@@ -467,13 +467,15 @@ export async function postReel(
   // the animated hook on Instagram, the topic Pages and YouTube (the main Page keeps the classic one).
   const plan = planReels({ noPhoto: isFallbackCard(article.heroImageUrl), isTopicPage: Boolean(opts.topicPage), needInstagram, needFacebook, needYouTube, ...reelSwitches(process.env) });
   if (plan.graphic) console.log("[reel] no photo of its own: graphic reel (drawn art, animated hook)");
-  const render = (youtube: boolean, motionHook: boolean) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: (youtube ? youtubeVoicePath : voicePath) ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook, soundHook: Boolean(opts.topicPage), punchZoom: Boolean(opts.topicPage) });
+  const render = (youtube: boolean, motionHook: boolean, facebook = false) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, facebook, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: (youtube ? youtubeVoicePath : voicePath) ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook, soundHook: Boolean(opts.topicPage), punchZoom: Boolean(opts.topicPage) });
   // Instagram/Facebook share one render per version (motion hook or classic); the YouTube Short gets its own end card (Subscribe, link in the description).
-  const mp4Motion = plan.renderMotion ? await render(false, true) : null;
-  const mp4Classic = plan.renderClassic ? await render(false, false) : null;
+  // Only Instagram uses the shared renders now (Facebook has its own below), so a version only Facebook wanted is not rendered twice.
+  const mp4Motion = needInstagram && plan.instagramMotion ? await render(false, true) : null;
+  const mp4Classic = needInstagram && !plan.instagramMotion ? await render(false, false) : null;
   for (const m of [mp4Motion, mp4Classic]) if (m) console.log(`Rendered ${(m.length / 1024 / 1024).toFixed(1)} MB`);
   const mp4Instagram = plan.instagramMotion ? mp4Motion : mp4Classic;
-  const mp4Facebook = plan.facebookMotion ? mp4Motion : mp4Classic;
+  // Facebook gets its own render, with an end card that does not say "link in bio" or name an Instagram handle (reel.tsx endCardText).
+  const mp4Facebook = needFacebook ? await render(false, plan.facebookMotion, true).catch((err) => { console.error("Facebook end-card render failed:", err); return null; }) : null;
 
   const siteUrl = locale ? `https://${LOCALES[locale].host}` : process.env.SITE_URL ?? "https://sportswirelive.com";
   const articleUrl = socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "facebook", reelVariant, opts.topicPage?.key);

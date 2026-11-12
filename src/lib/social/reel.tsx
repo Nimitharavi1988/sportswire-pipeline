@@ -359,11 +359,19 @@ const END_CARD = {
   es: { ask: "¿Qué opinas?", comments: "Cuéntanos en los comentarios", story: "Nota completa: enlace en la bio", follow: "Síguenos para más deportes" },
 };
 
-function EndCard({ th, language, followHandle, youtube }: { th: Theme; language?: string; followHandle?: string | null; youtube?: boolean }) {
-  const base = language === "es" ? END_CARD.es : END_CARD.en;
-  // A topic Page's reel follows its own account, not the main one's.
-  // YouTube: no bio link and no Instagram handle there; the link is in the description and the follow action is Subscribe.
-  const t = youtube ? { ...base, story: language === "es" ? "Nota completa: enlace en la descripción" : "Full story: link in the description", follow: language === "es" ? "Suscríbete para más deportes" : "Subscribe for daily sports news" } : followHandle === undefined ? base : { ...base, follow: followHandle ? `${language === "es" ? "Síguenos" : "Follow"} @${followHandle}` : language === "es" ? "Síguenos para más deportes" : "Follow us for more sports news" };
+// The end card's words (pure, unit-tested). Instagram's own wording ("link in bio", "Follow @handle") is wrong on the other platforms:
+// Facebook has no link in bio and the handle points to another platform (2026-11-11), so its video says "on our website" and "Follow this Page".
+export function endCardText(language: string | undefined, followHandle: string | null | undefined, youtube?: boolean, facebook?: boolean): { ask: string; comments: string; story: string; follow: string } {
+  const es = language === "es";
+  const base = es ? END_CARD.es : END_CARD.en;
+  if (youtube) return { ...base, story: es ? "Nota completa: enlace en la descripción" : "Full story: link in the description", follow: es ? "Suscríbete para más deportes" : "Subscribe for daily sports news" };
+  if (facebook) return { ...base, story: es ? "Nota completa en nuestro sitio web" : "Full story on our website", follow: es ? "Sigue esta página para más deportes" : "Follow this Page for daily sports news" };
+  if (followHandle === undefined) return base;
+  return { ...base, follow: followHandle ? `${es ? "Síguenos" : "Follow"} @${followHandle}` : es ? "Síguenos para más deportes" : "Follow us for more sports news" };
+}
+
+function EndCard({ th, language, followHandle, youtube, facebook }: { th: Theme; language?: string; followHandle?: string | null; youtube?: boolean; facebook?: boolean }) {
+  const t = endCardText(language, followHandle, youtube, facebook);
   return (
     <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", fontFamily: "Poppins", background: `radial-gradient(circle at 50% 40%, ${th.shade(0.78)} 0%, ${th.shade(0.92)} 70%)` }}>
       <Wordmark th={th} size={60} />
@@ -463,6 +471,8 @@ export async function renderReel(params: {
   followHandle?: string | null;
   // The YouTube Short's end card: Subscribe, and the link is in the description.
   youtube?: boolean;
+  // The Facebook version's end card: no "link in bio" and no Instagram handle.
+  facebook?: boolean;
   // The opening test (reelOpening.ts); default classic.
   opening?: Opening;
   // The score of the match the story is about, shown as a strip above the photo (reelScore.ts).
@@ -573,7 +583,7 @@ export async function renderReel(params: {
     const endPath = join(workDir, "layer-end.png");
     const [chromePng, endPng, ...textPngs] = await Promise.all([
       renderLayer(<ChromeLayer th={th} credit={params.language === "es" ? params.credit && decodeHtmlEntities(params.credit).replace(/^Photo via /i, "Foto vía ").replace(/^Photo: /i, "Foto: ") : params.credit && decodeHtmlEntities(params.credit)} darkFrom={darkFrom} darkTo={darkTo} darkEnd={darkEnd} portrait={Boolean(cropped)} score={animateHook ? null : params.score} />, fonts),
-      renderLayer(<EndCard th={th} language={params.language} followHandle={params.followHandle} youtube={params.youtube} />, fonts),
+      renderLayer(<EndCard th={th} language={params.language} followHandle={params.followHandle} youtube={params.youtube} facebook={params.facebook} />, fonts),
       ...texts.map((s) => renderLayer(s.node, fonts)),
     ]);
     await Promise.all([
