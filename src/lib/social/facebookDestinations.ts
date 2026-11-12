@@ -68,7 +68,7 @@ export interface FacebookDestination {
   // the queue made weak reels (Greenfield's average score was 38 vs 55 on the main Page).
   // activeHours: reels only go out in these local hours (default: the Page's own).
   // instagram: also post each reel to the Page's own Instagram (instagramId).
-  reels?: { dailyCap: number; perRunCap: number; minTrending?: number; activeHours?: { timeZone: string; start: number; end: number }; instagram?: boolean; youtube?: boolean };
+  reels?: { dailyCap: number; perRunCap: number; minTrending?: number; indiaMinTrending?: number; activeHours?: { timeZone: string; start: number; end: number }; instagram?: boolean; youtube?: boolean };
   // The Instagram account linked to this Page: each story posted to the Page
   // also goes there as a photo post (topicPosting.ts). Unset = Facebook only.
   instagramId?: string;
@@ -157,7 +157,10 @@ export const INDIA_CRICKET_PAGE: FacebookDestination = {
   captionTest: true,
   reelCaptionTest: true,
   breaking: { allowance: 4, reelAllowance: 2, slot: 0 },
-  reels: { dailyCap: 24, perRunCap: 1, minTrending: 35, youtube: true },
+  // India stories pass at a much lower floor and go first (2026-11-12): between matches nothing reached 35 and the Page posted no India reel through an Indian morning
+  // (the top India stories scored 5 to 18, among them the IPL trade and auction news), while its reels scoring under 35 did as well as those above it
+  // (28 reels under 15: 36% reached 50 plays; 103 reels at 35-49: 17%). Other cricket keeps 35.
+  reels: { dailyCap: 24, perRunCap: 1, minTrending: 35, indiaMinTrending: 5, youtube: true },
 };
 
 // Sportswirecricketlive: the test Page for the new approach (2026-10). It posts with the main

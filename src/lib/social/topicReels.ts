@@ -11,7 +11,7 @@ import { isMatchDataSource } from "../matchDataSources";
 import { hasUsableImage } from "../contentQuality";
 import { isPromotional } from "../thinContent";
 import { isSimilarToAny } from "../titleSimilarity";
-import { TOPIC_DESTINATIONS, destinationRunCap, instagramPaused, localDayStart, prioritise } from "./facebookDestinations";
+import { TOPIC_DESTINATIONS, destinationRunCap, instagramPaused, isIndiaCricket, localDayStart, prioritise } from "./facebookDestinations";
 import { postReel } from "./postReel";
 import { breakingSlotFor, findBreaking } from "./breakingNews";
 import { storyPickBoost } from "./drama";
@@ -32,6 +32,8 @@ const MAX_ATTEMPTS = 2;
 // account, past the one-Page-per-story rule and the daily cap by up to this many reels a day (2026-10-17: the India v West
 // Indies decider reached Greenfield but not Cricket Live, which skips Greenfield's stories and had used its 10).
 const MATCH_DAY_FANOUT_EXTRA = 3;
+// A Page with an India floor (facebookDestinations.ts indiaMinTrending) ranks its India stories ahead of other cricket: a bonus bigger than any score.
+const INDIA_FIRST_BONUS = 100;
 
 export async function postTopicReels(now: Date = new Date()): Promise<void> {
   const matchDayFixtures = await loadMatchDayFixtures(now);
@@ -99,7 +101,8 @@ export async function postTopicReels(now: Date = new Date()): Promise<void> {
       const breakingIds = d.breaking ? findBreaking(pool, now, d.breaking.minOutlets) : new Set<string>();
       // Drama first within each freshness tier (prioritise keeps the incoming order): social/drama.ts.
       // Stories about a match starting soon or just played come first (social/matchDay.ts).
-      const rankScore = (a: { title: string; trendingScore: number | null }) => ((a.trendingScore ?? 0) + storyPickBoost(a.title)) * matchDayMultiplier(a.title, matchDayFixtures, now);
+      const indiaFirst = (a: Parameters<typeof isIndiaCricket>[0]) => (d.reels?.indiaMinTrending !== undefined && isIndiaCricket(a) ? INDIA_FIRST_BONUS : 0);
+      const rankScore = (a: { title: string; trendingScore: number | null } & Parameters<typeof isIndiaCricket>[0]) => ((a.trendingScore ?? 0) + storyPickBoost(a.title) + indiaFirst(a)) * matchDayMultiplier(a.title, matchDayFixtures, now);
       const ranked = [...pool].sort((a, b) => rankScore(b) - rankScore(a));
       // Match-day stories go first whatever their age (the age rule makes an exception for them).
       const byAge = prioritise(ranked, now, d.focus);
@@ -122,7 +125,8 @@ export async function postTopicReels(now: Date = new Date()): Promise<void> {
         if (isMatchDataSource(a.sourceName)) continue;
         if (isSimilarToAny(a.title, titles)) continue;
         // A new story's score is still low in its first hour, so breaking news skips the floor.
-        if (!isBreaking && !fanout && d.reels.minTrending && (a.trendingScore ?? 0) < d.reels.minTrending) continue;
+        const floor = d.reels.indiaMinTrending !== undefined && isIndiaCricket(a) ? d.reels.indiaMinTrending : d.reels.minTrending;
+        if (!isBreaking && !fanout && floor && (a.trendingScore ?? 0) < floor) continue;
         checked++;
         if (!a.heroImageUrl) continue;
         attempts++;
