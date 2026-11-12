@@ -29,6 +29,9 @@ export function scoreHook(hook: string, style: HookStyle | "model", title: strin
   if (n >= 4 && n <= 9) s += 0.2; else if (n > 10) s -= 0.3; else if (n < 3) s -= 0.3;
   if (/\d/.test(hook)) s += 0.15;
   if (hook.split(/\s+/).slice(1).some((t) => /^\p{Lu}\p{Ll}/u.test(t.replace(/^[^\p{L}]+/u, "")))) s += 0.15; // a named person or team
+  // A hook that opens on a bare score or count ("5-1 win. New style takes hold", "4-1 record. 3-2 slide") did a little worse on Facebook than one that
+  // opens on a name (2026-11-11: 22% against 23% reaching 50 plays overall, 34% against 37% in the good hours, 1,663 reels): it names no one to care about.
+  if (/^\s*\d/.test(hook)) s -= 0.3;
   if (overlap(hook, title) > 0.8) s -= 0.2; // just the headline again
   if (/^(breaking|big news|you won't believe)/i.test(hook)) s -= 0.4;
   // Abstract, report-like wording stops no one ("critiques the proposed transition"); a contrast or a limit does

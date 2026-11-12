@@ -45,3 +45,10 @@ export function questionFirst(caption: string): string {
   if (!/\?["”’)]?$/.test(last) || last.split(" ").length < 3) return caption;
   return `${last}\n\n${parts.slice(0, -1).join(" ")}`;
 }
+
+// Whether a Facebook reel gets the short caption (just the opening sentence). It does not any more (2026-11-11): across all Pages, reels posted
+// 06:00-15:00 UTC with the usual full caption reached 50 plays 40% of the time against 32% with the short one (395 and 382 reels; the main Page
+// alone 36% against 33%), so Facebook keeps the full caption. Instagram's caption test is unchanged. FACEBOOK_CAPTION_TEST=1 restores the old split.
+export function facebookShortCaption(variant: string, ownTest: boolean, env: Record<string, string | undefined> = process.env): boolean {
+  return env.FACEBOOK_CAPTION_TEST === "1" && variant === "hook" && !ownTest;
+}

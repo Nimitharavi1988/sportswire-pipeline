@@ -7,6 +7,7 @@ import { decodeHtmlEntities } from "../htmlEntities";
 import { unknownNames } from "./speechNames";
 import { voiceSource, buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor, youtubeVoiceOn } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
+import { facebookShortCaption } from "./captionVariant";
 import { YOUTUBE_EN_CURVE, curveAllows, reelPacingOn } from "./reelPacing";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -490,7 +491,7 @@ export async function postReel(
   const siteUrl = locale ? `https://${LOCALES[locale].host}` : process.env.SITE_URL ?? "https://sportswirelive.com";
   const articleUrl = socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "facebook", reelVariant, opts.topicPage?.key);
   const instagramPosted = needInstagram && mp4Instagram ? await postReelToInstagram(article, mp4Instagram, captions, opts.topicPage) : false;
-  const facebookPosted = needFacebook && mp4Facebook ? await postReelToFacebook(article, mp4Facebook, captions, articleUrl, opts.topicPage, captionVariantFor(articleId) === "hook" && !opts.topicPage?.reelCaptionTest) : false;
+  const facebookPosted = needFacebook && mp4Facebook ? await postReelToFacebook(article, mp4Facebook, captions, articleUrl, opts.topicPage, facebookShortCaption(captionVariantFor(articleId), Boolean(opts.topicPage?.reelCaptionTest))) : false;
   // Never lets a YouTube problem (e.g. the row insert) undo the Instagram/Facebook posts above.
   const youtubePosted = needYouTube ? await render(true, plan.youtubeMotion).then((yt) => postReelToYouTube(article, yt, captions, socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "youtube"), content.hook, textTitle, opts.topicPage)).catch((err) => { console.error("[youtube short] failed:", err); return false; }) : false;
   return { instagramPosted, facebookPosted, youtubePosted };
