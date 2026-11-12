@@ -25,6 +25,35 @@ export const REEL_USER_TAGS: Record<string, string> = {
   ICC: "icc",
 };
 
+// Formula 1 drivers by the surname headlines use ("Hamilton wants talks"), tagged only on Formula 1 stories: entityHandles.ts needs the full
+// name, which F1 headlines rarely carry. Usernames as in ENTITY_HANDLES (Wikidata P2003, checked 2026-11-11).
+export const F1_DRIVER_TAGS: Record<string, string> = {
+  Verstappen: "maxverstappen1",
+  Hamilton: "lewishamilton",
+  Norris: "landonorris",
+  Leclerc: "charles_leclerc",
+  Russell: "georgerussell63",
+  Piastri: "oscarpiastri",
+  Antonelli: "kimi.antonelli",
+  Alonso: "fernandoalo_oficial",
+  Sainz: "carlossainz55",
+  Hadjar: "isackhadjar",
+  Bearman: "olliebearman",
+};
+
+// Formula 1 teams, tagged only on Formula 1 stories (a bare "Williams" or "Mercedes" means something else in other sports). Usernames from
+// each team's Wikidata record (property P2003), checked 2026-11-11.
+export const F1_TEAM_TAGS: Record<string, string> = {
+  Ferrari: "scuderiaferrari",
+  McLaren: "mclaren",
+  "Red Bull": "redbullracing",
+  Mercedes: "mercedesamgf1",
+  "Aston Martin": "astonmartinf1",
+  Alpine: "alpinef1team",
+  Haas: "haasf1team",
+  Williams: "williamsf1official",
+};
+
 function matching(map: Record<string, string>, title: string): string[] {
   const found = new Set<string>();
   for (const [name, handle] of Object.entries(map)) {
@@ -40,7 +69,9 @@ function matching(map: Record<string, string>, title: string): string[] {
 export function reelTagsFor(title: string, category: string): { collaborators: string[]; userTags: { username: string }[] } {
   const collaborators = matching(REEL_COLLABORATORS, title).slice(0, 3);
   const entityHandles = entitiesInTitle(title, category, { precise: true }).flatMap((e) => (e.handle ? [e.handle] : []));
-  const userTags = [...new Set([...entityHandles, ...matching(REEL_USER_TAGS, title)])]
+  const f1 = category.split("/")[0] === "formula-1";
+  const teamTags = f1 ? [...matching(F1_DRIVER_TAGS, title), ...matching(F1_TEAM_TAGS, title)] : [];
+  const userTags = [...new Set([...entityHandles, ...teamTags, ...matching(REEL_USER_TAGS, title)])]
     .filter((h) => !collaborators.includes(h))
     .slice(0, 3)
     .map((username) => ({ username }));

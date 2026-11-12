@@ -31,6 +31,18 @@ export const ENTITY_HANDLES: Record<string, string> = {
   "detroit-lions": "detroitlionsnfl",
   "new-york-jets": "nyjets",
   "buffalo-bills": "buffalobills",
+  // Formula 1 drivers: Instagram usernames from each driver's Wikidata record (property P2003), checked 2026-11-11.
+  "max-verstappen": "maxverstappen1",
+  "lewis-hamilton": "lewishamilton",
+  "lando-norris": "landonorris",
+  "charles-leclerc": "charles_leclerc",
+  "george-russell": "georgerussell63",
+  "oscar-piastri": "oscarpiastri",
+  "kimi-antonelli": "kimi.antonelli",
+  "fernando-alonso": "fernandoalo_oficial",
+  "carlos-sainz": "carlossainz55",
+  "isack-hadjar": "isackhadjar",
+  "oliver-bearman": "olliebearman",
   // Players
   "josh-allen": "joshallenqb",
   "vaibhav-sooryavanshi": "vaibhav_sooryavanshi09",

@@ -1,6 +1,7 @@
 import { db } from "@/db";
 import { article, socialPost, postDecision } from "@/db/schema";
 import { reelSkippedIds } from "../social/reelRetry";
+import { reelSportWeight, reelSportWeights } from "../social/reelSportWeight";
 import { eq, and, or, inArray, notInArray, gte, lt, like, count, desc } from "drizzle-orm";
 import { TOPIC_INSTAGRAM_KEYS } from "../social/facebookDestinations";
 import { instagramPhotoRoom, mainInstagramPhotoCap } from "../social/topicInstagramCap";
@@ -601,8 +602,10 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
       .orderBy(desc(socialPost.postedAt))
       .limit(6)
   ).map((r) => r.category);
+  const reelWeights = reelSportWeights(process.env.REEL_SPORT_WEIGHTS);
   const igByTrending = orderForVariety(
-    [...igPool].sort((a, b) => socialSelectionScore(b) - socialSelectionScore(a)),
+    // Reel candidates lean toward the sports whose reels reach most (social/reelSportWeight.ts); only this ordering is weighted.
+    [...igPool].sort((a, b) => socialSelectionScore(b) * reelSportWeight(b.category, reelWeights) - socialSelectionScore(a) * reelSportWeight(a.category, reelWeights)),
     recentIgCategories,
     isMatchDataSource
   );
