@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import { article, socialPost, postDecision } from "@/db/schema";
+import { indiaAwake, regionTimingWeight } from "../social/regionSchedule";
 import { reelSkippedIds } from "../social/reelRetry";
 import { reelSportWeight, reelSportWeights } from "../social/reelSportWeight";
 import { eq, and, or, inArray, notInArray, gte, lt, like, count, desc } from "drizzle-orm";
@@ -413,6 +414,7 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
   // below (shared with the pacing math further down) rather than a second
   // `new Date()` here — both need "this run's start time," not
   // independently-sampled clock reads a few lines apart.
+  const regionScheduleOn = process.env.REGION_SCHEDULE?.trim().toLowerCase() !== "off";
   function socialSelectionScore(a: SocialCandidate): number {
     // Newer stories first (social/freshness.ts): the stored score has no time
     // component, so without this a 20-hour-old story kept beating this hour's.
@@ -423,6 +425,9 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
     const fresh = (matchDay >= BOTH_SIDES_MULTIPLIER ? Math.max(baseFresh, MATCH_DAY_FRESHNESS_FLOOR) : baseFresh) * matchDay;
     // A story with only a card for its picture ranks lower (contentQuality.ts cardOnlyMultiplier), so photo stories fill the Page's slots first.
     const picture = cardOnlyMultiplier(a);
+    // Each sport goes out in its own audience's local hours (social/regionSchedule.ts): India sports at India time, US sports at US
+    // time, European ones at European time. REGION_SCHEDULE=off restores the two older rules below.
+    if (regionScheduleOn) return a.trendingScore * regionTimingWeight(a.category, now) * fresh * picture;
     if (a.category === "american-football" && isInternationalAudienceWindow(now)) {
       return a.trendingScore * AMERICAN_FOOTBALL_INTERNATIONAL_WINDOW_MULTIPLIER * fresh * picture;
     }
@@ -466,7 +471,8 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
     // US hours (12:00-06:00 UTC): cricket gives up its reserved slot (explicit
     // request 2026-10-01, US reach) and competes on score only, down-weighted
     // in socialSelectionScore. The India cricket Page covers it meanwhile.
-    const usHours = isUsAudienceHours(now);
+    // Cricket keeps its reserved slot while India is awake (regionSchedule.ts); with REGION_SCHEDULE=off, the old rule (not in US hours).
+    const usHours = regionScheduleOn ? !indiaAwake(now) : isUsAudienceHours(now);
     const reservations = [
       { category: "american-football", slots: americanFootballReservedSlots(now) },
       ...RESERVED_CATEGORIES.filter((r) => !(usHours && r.category === "cricket")),
