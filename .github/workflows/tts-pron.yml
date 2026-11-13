@@ -1,0 +1,38 @@
+name: Voice pronunciation test (no posting)
+# Manual only. Synthesizes English phrases with the real natural-mode script and transcribes them back with Whisper, to see what the voice actually says.
+on: workflow_dispatch
+permissions: { contents: read }
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install kokoro-onnx soundfile numpy faster-whisper
+      - name: Synthesize and transcribe
+        run: |
+          mkdir out && cd out
+          B=https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0
+          curl -sL -o kokoro.onnx "$B/kokoro-v1.0.int8.onnx"; curl -sL -o voices.bin "$B/voices-v1.0.bin"
+          for K in $(python3 -c "import json;print(' '.join(json.load(open('../.github/data/pron-texts.json')).keys()))"); do
+            T=$(python3 -c "import json;print(json.load(open('../.github/data/pron-texts.json'))['$K'])")
+            python3 ../.github/data/kokoro_natural.py kokoro.onnx voices.bin bm_george en-gb 1.05 "p_$K.wav" 42 "$T" || echo "SYNTH FAILED $K"
+          done
+          python3 - <<'PY'
+          import json, glob, numpy as np, soundfile as sf
+          from faster_whisper import WhisperModel
+          texts = json.load(open("../.github/data/pron-texts.json"))
+          m = WhisperModel("small", device="cpu", compute_type="int8")
+          for f in sorted(glob.glob("p_*.wav")):
+              x, sr = sf.read(f, dtype="float32")
+              if x.ndim > 1: x = x.mean(axis=1)
+              n = int(len(x) * 16000 / sr)
+              y = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype("float32")
+              seg, info = m.transcribe(y, language="en")
+              key = f[2:-4]
+              print(f"RESULT {key} ({len(x)/sr:.1f}s)\n  said : {texts[key]}\n  heard: {' '.join(s.text.strip() for s in seg)}")
+          PY
+      - uses: actions/upload-artifact@v4
+        with: { name: pron-samples, path: out/*.wav }
