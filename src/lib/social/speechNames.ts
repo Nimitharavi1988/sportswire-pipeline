@@ -45,6 +45,11 @@ export const SPEECH_NAMES: Record<string, string> = {
   // fight acronyms a voice spells out letter by letter with gaps ("U... F... C"): said as the full name instead. Cricket ones (T20, IPL)
   // were heard fine as written (2026-10-31), so they are left alone.
   UFC: "Ultimate Fighting Championship", PFL: "Professional Fighters League", MMA: "mixed martial arts", TKO: "technical knockout", KO: "knockout",
+  // cricket formats: a voice reads "ODI" as the word "Audi" (heard on reels, 2026-11-12) and "T20I" as "T20, eye" (Whisper round trip), so they are
+  // said in full. T20, BCCI, ICC, IPL, KKR and GT were heard right as written. Respellings are kept only when the round trip heard them better:
+  // guesses for Jharkhand, Anukul, Pathan, Kaif and Sehwag came back no better or worse, so those stay as written.
+  ODI: "one day international", ODIs: "one day internationals", T20I: "T twenty international", T20Is: "T twenty internationals", WTC: "World Test Championship",
+  NZ: "New Zealand", IND: "India", AUS: "Australia", Syed: "Sayyid", Mushtaq: "Mushtak", Embiid: "Embeed",
   // names that kept turning up in October headlines
   Ranji: "Ranjee", Yuvraj: "Yoovraaj", Kashvi: "Kashvee", Vidarbha: "Vidarbah", Warriorz: "Warriors", Molineux: "Molinoo",
   // football: people and places

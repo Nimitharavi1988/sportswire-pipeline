@@ -15,6 +15,8 @@ export function speakScores(text: string, category = "", language: "en" | "es" =
   let out = text;
   // Cricket scores and bowling figures: 259/7, 144/4 -> "259 for 7"; 6-26 -> "6 for 26" (wickets 10 or fewer, then runs 10 or more).
   if (cricket) {
+    // Overs: 8.2 overs -> "8 point 2 overs" (a voice read "8.2" as "eight. Two", a sentence break, in the 2026-11-12 round trip).
+    out = out.replace(/\b(\d{1,2})\.(\d)(?=\s+overs?\b)/gi, "$1 point $2");
     out = out.replace(/\b(\d{2,3})\/(\d{1,2})\b/g, "$1 for $2");
     out = out.replace(/\b(\d{1,2})[-–](\d{2,3})\b/g, (m, a: string, b: string) => (Number(a) <= 10 && Number(b) >= 10 ? `${a} for ${b}` : m));
   }
