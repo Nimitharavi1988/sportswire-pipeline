@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { article, socialPost, postDecision } from "@/db/schema";
 import { indiaAwake, regionTimingWeight } from "../social/regionSchedule";
 import { FACEBOOK_REEL_CURVE, curveTarget, reelPacingOn } from "../social/reelPacing";
+import { postDataReels } from "../social/dataReels";
 import { reelSkippedIds } from "../social/reelRetry";
 import { reelSportWeight, reelSportWeights } from "../social/reelSportWeight";
 import { eq, and, or, inArray, notInArray, gte, lt, like, count, desc } from "drizzle-orm";
@@ -721,6 +722,8 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
   await postPredictionPrompts(now);
   await postPredictionResults(now);
   await postTopicReels(now);
+  // Data reels (social/dataReels.ts): a series chart after a finished cricket match. DATA_REELS=off by default.
+  await postDataReels(now).catch((err) => console.error("[data reel] failed:", err));
   await postSpanishShorts(now);
 
   await sendAutomatedPushNotifications(toApprove);

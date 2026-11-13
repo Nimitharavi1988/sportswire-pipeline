@@ -504,3 +504,39 @@ export async function postReel(
   const youtubePosted = needYouTube ? await render(true, plan.youtubeMotion).then((yt) => postReelToYouTube(article, yt, captions, socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "youtube"), content.hook, textTitle, opts.topicPage)).catch((err) => { console.error("[youtube short] failed:", err); return false; }) : false;
   return { instagramPosted, facebookPosted, youtubePosted };
 }
+
+// A data reel (dataReels.ts): a finished video that is not made from a story's photo, posted to the platforms asked for that do not already have it
+// on this destination. The article is the match row the chart ends with, so the post rows (and the duplicate check below) hang from it. No voice, and
+// the story-reel rules (freshness of a photo story, one Facebook reel per story across Pages) do not apply: one chart per match goes to each Page.
+export async function postDataReel(
+  articleId: string,
+  mp4: Buffer,
+  captions: SocialCaptions,
+  hook: string,
+  opts: { instagram: boolean; facebook: boolean; youtube: boolean; topicPage?: FacebookDestination }
+): Promise<{ instagramPosted: boolean; facebookPosted: boolean; youtubePosted: boolean }> {
+  const none = { instagramPosted: false, facebookPosted: false, youtubePosted: false };
+  clearDecisionContext();
+  const [row] = await db.select({ article: articleTable, vertical: verticalTable })
+    .from(articleTable)
+    .innerJoin(verticalTable, eq(articleTable.verticalId, verticalTable.id))
+    .where(eq(articleTable.id, articleId))
+    .limit(1);
+  if (!row) throw new Error(`Article not found: ${articleId}`);
+  const article: ArticleWithVertical = { ...row.article, vertical: row.vertical };
+  const destination = opts.topicPage ? `${opts.topicPage.key}-reel` : DESTINATION;
+  const done = await db.select({ platform: socialPostTable.platform }).from(socialPostTable)
+    .where(and(eq(socialPostTable.articleId, articleId), eq(socialPostTable.destination, destination), inArray(socialPostTable.status, ["posted", "queued"])));
+  const has = (p: string) => done.some((d) => d.platform === p);
+  const igOk = opts.instagram && !has("instagram") && !(await instagramCoolingDown(destination)) && !(opts.topicPage && instagramPaused(opts.topicPage.key));
+  const fbOk = opts.facebook && !has("facebook");
+  const ytOk = opts.youtube && !has("youtube") && youtubeConfigured("en");
+  if (!igOk && !fbOk && !ytOk) return none;
+  const siteUrl = process.env.SITE_URL ?? "https://sportswirelive.com";
+  const instagramPosted = igOk ? await postReelToInstagram(article, mp4, captions, opts.topicPage) : false;
+  const facebookPosted = fbOk ? await postReelToFacebook(article, mp4, captions, socialArticleUrl(siteUrl, article.slug, "facebook", "data", opts.topicPage?.key), opts.topicPage, false) : false;
+  const youtubePosted = ytOk
+    ? await postReelToYouTube(article, mp4, captions, socialArticleUrl(siteUrl, article.slug, "youtube"), hook, hook, opts.topicPage).catch((err) => { console.error("[data reel] YouTube post failed:", err); return false; })
+    : false;
+  return { instagramPosted, facebookPosted, youtubePosted };
+}
