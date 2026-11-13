@@ -8,6 +8,7 @@ import { unknownNames } from "./speechNames";
 import { voiceSource, buildShortScript, buildVoiceScript, makeVoice, pickVoice, voiceoverFor, youtubeVoiceOn } from "./voiceover";
 import { reelIsFresh, reelMaxAgeHours, isStarStory } from "./freshness";
 import { facebookShortCaption } from "./captionVariant";
+import { toneMismatch } from "./photoTone";
 import { YOUTUBE_EN_CURVE, curveAllows, reelPacingOn } from "./reelPacing";
 import { MATCH_DAY_REEL_MAX_AGE_HOURS, isMatchDayStory } from "./matchDay";
 import { loadMatchDayFixtures } from "./matchDayFixtures";
@@ -22,7 +23,7 @@ import { createId } from "@paralleldrive/cuid2";
 import { generatePosterContent, generateSocialCaptions, type SocialCaptions } from "@/lib/ingestion/commentary";
 import { renderReel } from "./reel";
 import { planReels, reelSwitches } from "./reelPlan";
-import { isFallbackCard } from "../fallbackCards";
+import { cardUrlFor, isFallbackCard } from "../fallbackCards";
 import { musicStyleFor, type ReelMusicStyle } from "./reelMusic";
 import { reelThemeForLayout, type ReelTheme, type ReelFont } from "./reelThemes";
 import { resolvePageAccessToken, translationFor } from "./facebook";
@@ -331,6 +332,13 @@ export async function postReel(
     console.log(`[reel] skipped ${articleId}: no photo or no body`);
     await logSkips(articleId, opts, "no photo or no body");
     return none;
+  }
+  // A bad-news headline never carries a smiling portrait (photoTone.ts): the reel takes the sport's graphic card, with no photo credit.
+  if (toneMismatch(article.title, article.heroImageUrl)) {
+    console.log(`[reel] ${articleId}: bad-news headline with a portrait, using the graphic card instead`);
+    article.heroImageUrl = cardUrlFor(article.category, article.id, undefined, article.title);
+    article.heroImageCredit = null;
+    article.heroImageCreditUrl = null;
   }
   // Fresh news only (freshness.ts): no reel of an old story, whoever asks for it.
   const maxAge = reelMaxAgeHours(process.env, opts.topicPage?.key);
