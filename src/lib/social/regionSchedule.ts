@@ -74,3 +74,27 @@ export function indiaAwake(now: Date): boolean {
   const h = localHour(now, ZONES.india);
   return h >= 7 && h < 23;
 }
+
+// India and the US take turns on the main reels while both audiences are at a peak hour (2026-11-14, user's request: "equal preference with
+// cricket during India peak and USA morning"). Both already get full weight then, so cricket's higher-scoring stories took nearly every slot
+// (no US reel 11:44 to 14:02 UTC that morning). In those hours the next reel goes to the side (India sports or US sports, by each sport's
+// home region in SPORT_REGIONS) that had fewer of the last six reels, ties going to the side that did not post last. Only the first candidate
+// moves; outside shared peaks, or when the wanted side has nothing waiting, the order is unchanged. REEL_TURNS=off turns it off.
+export function homeRegion(category: string): Region | undefined {
+  const regions = SPORT_REGIONS[category.split("/")[0]] ?? DEFAULT_REGIONS;
+  return (Object.entries(regions) as [Region, number][]).find(([, s]) => s >= 1)?.[0];
+}
+export const sharedIndiaUsPeak = (now: Date): boolean => regionHourWeight("india", now) >= 1 && regionHourWeight("us", now) >= 1;
+
+// recentCategories: the last reels' sports, newest first. Pure, unit-tested.
+export function takeIndiaUsTurns<T extends { category: string }>(ordered: T[], recentCategories: string[], now: Date, env: Record<string, string | undefined> = process.env): T[] {
+  if (env.REEL_TURNS?.trim().toLowerCase() === "off" || env.REGION_SCHEDULE?.trim().toLowerCase() === "off" || !sharedIndiaUsPeak(now)) return ordered;
+  const sides = recentCategories.slice(0, 6).map(homeRegion);
+  const india = sides.filter((r) => r === "india").length;
+  const us = sides.filter((r) => r === "us").length;
+  const lastSide = sides.find((r) => r === "india" || r === "us");
+  const wanted: Region = india < us ? "india" : us < india ? "us" : lastSide === "us" ? "india" : "us";
+  const i = ordered.findIndex((a) => homeRegion(a.category) === wanted);
+  if (i <= 0) return ordered;
+  return [ordered[i], ...ordered.slice(0, i), ...ordered.slice(i + 1)];
+}

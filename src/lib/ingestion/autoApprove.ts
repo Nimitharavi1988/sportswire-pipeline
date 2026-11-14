@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { STALE_NO_IMAGE_HOURS, STALE_NO_BODY_HOURS } from "./staleWindows";
 import { article, socialPost, postDecision } from "@/db/schema";
-import { indiaAwake, regionTimingWeight } from "../social/regionSchedule";
+import { indiaAwake, regionTimingWeight, takeIndiaUsTurns } from "../social/regionSchedule";
 import { FACEBOOK_REEL_CURVE, curveTarget, reelPacingOn } from "../social/reelPacing";
 import { postDataReels } from "../social/dataReels";
 import { reelSkippedIds } from "../social/reelRetry";
@@ -612,12 +612,13 @@ export async function autoApproveValidArticles(): Promise<{ checked: number; app
       .limit(6)
   ).map((r) => r.category);
   const reelWeights = reelSportWeights(process.env.REEL_SPORT_WEIGHTS);
-  const igByTrending = orderForVariety(
+  // India and the US take turns while both are at a peak hour (social/regionSchedule.ts takeIndiaUsTurns).
+  const igByTrending = takeIndiaUsTurns(orderForVariety(
     // Reel candidates lean toward the sports whose reels reach most (social/reelSportWeight.ts); only this ordering is weighted.
     [...igPool].sort((a, b) => socialSelectionScore(b) * reelSportWeight(b.category, reelWeights) - socialSelectionScore(a) * reelSportWeight(a.category, reelWeights)),
     recentIgCategories,
     isMatchDataSource
-  );
+  ), recentIgCategories, new Date());
   // Stories the reel step already skipped (too old, or no reel copy a moment ago) wait, so the next ones in the pool get their turn.
   const reelSkipRows = await db.select({ articleId: postDecision.articleId, reason: postDecision.reason, createdAt: postDecision.createdAt }).from(postDecision)
     .where(and(eq(postDecision.platform, "instagram"), eq(postDecision.kind, "reel"), eq(postDecision.outcome, "skipped"), gte(postDecision.createdAt, new Date(Date.now() - 24 * 3_600_000))));
