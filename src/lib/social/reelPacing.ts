@@ -8,7 +8,9 @@
 // of stories simply catches up later. REEL_PACING=off restores the old curve for Facebook and the flat pacing for YouTube. Pure, unit-tested.
 
 //                                    00   01   02   03   04   05   06  07  08  09  10  11  12  13  14   15   16   17   18   19   20   21   22   23
-export const FACEBOOK_REEL_CURVE = [0.08, 0.08, 0.08, 0.08, 0.08, 0.4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.4, 0.4, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08];
+// 00-04 UTC raised 0.08 -> 0.5 / 0.3 (2026-11-14, user's request): the US evening (6-10 pm Central) gets main-Page reels too, about 4 a day, so the US
+// audience can grow; with the cap unchanged, the 06-15 UTC window keeps about 16 of the 24.
+export const FACEBOOK_REEL_CURVE = [0.5, 0.5, 0.5, 0.5, 0.3, 0.4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.4, 0.4, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08, 0.08];
 export const YOUTUBE_EN_CURVE = [1, 1, 1, 1, 1, 1, 1, 1, 1, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06, 0.06];
 
 export function reelPacingOn(env: Record<string, string | undefined> = process.env): boolean {
