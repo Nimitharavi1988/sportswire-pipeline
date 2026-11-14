@@ -394,6 +394,8 @@ export async function generateSocialCaptions(title: string, body: string, langua
   const facebook = typeof parsed.facebookCaption === "string" ? parsed.facebookCaption.trim() : "";
   const instagram = typeof parsed.instagramCaption === "string" ? parsed.instagramCaption.trim() : "";
   if (!facebook || !instagram) return null;
+  // A free model once returned ~100 quote marks then mangled words as the caption, and it was posted (main Page, 2026-11-14 02:07 UTC).
+  if (isGarbledCaption(facebook) || isGarbledCaption(instagram)) return null;
 
   return { facebook, instagram };
 }
@@ -549,4 +551,10 @@ export async function generateMatchRecap(
 
   const recap = typeof parsed.recap === "string" ? parsed.recap.trim() : "";
   return recap || null;
+}
+
+// True for AI output that is not prose: a run of 8+ of the same non-space character ("""""""", ????????), which no real caption has
+// (emoji and "..." stay well under it). The caller then falls back to the plain headline (pure, unit-tested).
+export function isGarbledCaption(text: string): boolean {
+  return /(\S)\1{7,}/u.test(text);
 }
