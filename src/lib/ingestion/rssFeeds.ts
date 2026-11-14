@@ -338,8 +338,8 @@ export const FEEDS: RssFeed[] = [
   // 2026-11-10: ESPN's RSS answers GitHub's runners with a bot challenge (empty 202, x-amzn-waf-action: challenge), so hockey, MMA and boxing lost
   // their main feed. These were tested from a runner first: fresh items, and the article text (or the feed's own full text) readable there.
   { url: "https://www.prohockeyrumors.com/feed", category: "hockey", sourceName: "Pro Hockey Rumors" },
-  { url: "https://thehockeynews.com/.rss/full/", category: "hockey", sourceName: "The Hockey News" },
-  { url: "https://www.cbssports.com/rss/headlines/nhl/", category: "hockey", sourceName: "CBS Sports" },
+  // Its podcast episodes ("The Hockey News Big Show", 2026-11-13) are show promos, not news.
+  { url: "https://thehockeynews.com/.rss/full/", category: "hockey", sourceName: "The Hockey News", exclude: /\b(big show|podcast)\b/i },
   // Volleyball had match results only (espnVolleyballData.ts/
   // volleyballData.ts), no news. Checked live 2026-09-26 (Volleyball
   // World's own feeds 404): Volleyball Magazine (~1/day), FIVB — the

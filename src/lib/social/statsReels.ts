@@ -35,9 +35,11 @@ export async function loadStatsReels(now: Date): Promise<StatsReel[]> {
   return out;
 }
 
-export async function postStatsReels(now: Date, mode: "dry" | "on"): Promise<void> {
+// Posts at most `room` reels (the shared daily cap, dataReelMode.ts) and returns how many it started.
+export async function postStatsReels(now: Date, mode: "dry" | "on", room: number): Promise<number> {
+  if (room <= 0) return 0;
   const reels = await loadStatsReels(now);
-  if (reels.length === 0) return;
+  if (reels.length === 0) return 0;
   const dayStart = new Date(now);
   dayStart.setUTCHours(0, 0, 0, 0);
   const todayRows = await db.select({ category: article.category, articleId: socialPost.articleId, destination: socialPost.destination }).from(socialPost)
@@ -47,7 +49,7 @@ export async function postStatsReels(now: Date, mode: "dry" | "on"): Promise<voi
   for (const t of todayRows) postedBySport.set(t.category, (postedBySport.get(t.category) ?? 0) + 1);
   let handled = 0;
   for (const r of reels) {
-    if (handled >= MAX_PER_RUN) break;
+    if (handled >= Math.min(MAX_PER_RUN, room)) break;
     if ((postedBySport.get(r.sport) ?? 0) >= (STATS_DAILY_CAP[r.sport] ?? 0)) continue;
     const doneRows = await db.select({ destination: socialPost.destination, platform: socialPost.platform }).from(socialPost)
       .where(and(eq(socialPost.articleId, r.articleId), inArray(socialPost.status, ["posted", "queued"])));
@@ -78,4 +80,5 @@ export async function postStatsReels(now: Date, mode: "dry" | "on"): Promise<voi
       }
     }
   }
+  return handled;
 }

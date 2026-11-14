@@ -4,7 +4,7 @@
 // would go out) or "on". Data reels are extra to the Pages' daily reel caps (about one chart per match per Page).
 import { db } from "@/db";
 import { article, socialPost } from "@/db/schema";
-import { and, eq, gte, inArray } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { renderChartReel } from "./chartReel";
 import { buildSeriesChart, groupBySeries, type SeriesChart, type SeriesRow } from "./seriesTracker";
 import { postDataReel } from "./postReel";
@@ -13,7 +13,7 @@ import { wantedSports } from "./matchStats";
 import { CRICKETLIVE_PAGE, INDIA_CRICKET_PAGE, instagramPaused, type FacebookDestination } from "./facebookDestinations";
 import { MAIN_REEL_DESTINATION } from "./reelDuplicates";
 
-import { dataReelMode } from "./dataReelMode";
+import { dataReelMode, dataReelRoom } from "./dataReelMode";
 
 const MAX_AGE_HOURS = 24;
 const MAX_CHARTS_PER_RUN = 2;
@@ -31,9 +31,18 @@ async function loadRows(now: Date): Promise<SeriesRow[]> {
 export async function postDataReels(now: Date = new Date()): Promise<void> {
   const mode = dataReelMode();
   if (mode === "off") return;
+  // One shared daily cap for stats and chart reels (dataReelMode.ts DATA_REELS_DAILY_CAP), counted as today's main-Page Facebook posts of
+  // match-data stories (stats reels and chart reels are both posted against a match row; a match row's ordinary reel counts too, which
+  // only errs on the side of fewer).
+  const dayStart = new Date(now);
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const [{ n: usedToday }] = await db.select({ n: count() }).from(socialPost).innerJoin(article, eq(socialPost.articleId, article.id))
+    .where(and(eq(socialPost.platform, "facebook"), eq(socialPost.destination, MAIN_REEL_DESTINATION), inArray(socialPost.status, ["posted", "queued"]), gte(socialPost.createdAt, dayStart), isNotNull(article.matchKey)));
+  let room = dataReelRoom(Number(usedToday));
+  if (room === 0) { console.log(`[data reel] daily cap reached (${usedToday} today)`); return; }
   // Match stats reels for the other major sports (statsReels.ts), under the same switch.
-  await postStatsReels(now, mode).catch((err) => console.error("[stats reel] failed:", err));
-  if (!wantedSports().has("cricket")) return;
+  room -= await postStatsReels(now, mode, room).catch((err) => { console.error("[stats reel] failed:", err); return 0; });
+  if (room <= 0 || !wantedSports().has("cricket")) return;
   const rows = await loadRows(now);
   const charts: SeriesChart[] = [];
   for (const g of groupBySeries(rows).values()) {
@@ -46,7 +55,7 @@ export async function postDataReels(now: Date = new Date()): Promise<void> {
     { dest: INDIA_CRICKET_PAGE, key: `${INDIA_CRICKET_PAGE.key}-reel` },
     { dest: CRICKETLIVE_PAGE, key: `${CRICKETLIVE_PAGE.key}-reel` },
   ];
-  for (const chart of charts.slice(0, MAX_CHARTS_PER_RUN)) {
+  for (const chart of charts.slice(0, Math.min(MAX_CHARTS_PER_RUN, room))) {
     const doneRows = await db.select({ destination: socialPost.destination, platform: socialPost.platform }).from(socialPost)
       .where(and(eq(socialPost.articleId, chart.latestArticleId), inArray(socialPost.status, ["posted", "queued"])));
     const pending = targets.filter((t) => !doneRows.some((d) => d.destination === t.key && d.platform === "facebook"));

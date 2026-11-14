@@ -166,7 +166,8 @@ export function buildMatchStats(m: MatchStatsInput, now: Date = new Date(), maxA
 // Football only for the competitions people follow; the US sports have few enough games to take any.
 export const BIG_FOOTBALL = /(premier league|la ?liga|bundesliga|serie a|ligue 1|champions league|europa league|world cup|\bmls\b|fa cup|copa|nations league|euro)/i;
 // Reels a day per sport (UTC day).
-export const STATS_DAILY_CAP: Partial<Record<StatsSport, number>> = { football: 4, "american-football": 3, basketball: 3, hockey: 2 };
+// One a day per sport (was 4, 3, 3, 2 until 2026-11-14), inside the shared DATA_REELS_DAILY_CAP of 4 (dataReelMode.ts).
+export const STATS_DAILY_CAP: Partial<Record<StatsSport, number>> = { football: 1, "american-football": 1, basketball: 1, hockey: 1 };
 export function wantedSports(env: Record<string, string | undefined> = process.env): Set<string> {
   const raw = env.DATA_REEL_SPORTS?.trim();
   return new Set((raw ? raw.split(",") : ["cricket", "football", "american-football", "basketball", "hockey"]).map((s) => s.trim().toLowerCase()).filter(Boolean));
