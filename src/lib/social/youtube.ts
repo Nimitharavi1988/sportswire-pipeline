@@ -419,3 +419,15 @@ export async function uploadShort(mp4: Buffer, title: string, description: strin
   if (!res.ok || !data.id) throw new Error(`YouTube upload failed (${res.status}): ${data?.error?.message ?? ""}`);
   return data.id as string;
 }
+
+// Drama first on the English channel (2026-11-14, user's request). Of 237 English Shorts (Oct 30 to Nov 11, at least 3 days old), titles with
+// a conflict word had a median of 295 views against 49 for the rest, and big-moment words 326 against 58; record/milestone titles did worse
+// (22 against 73) and a star name alone did not help (55 against 66), so neither counts. A drama story can always take a free slot; a routine
+// story only while fewer than half the day's Shorts are out, so the rest of the day's slots wait for drama. YOUTUBE_DRAMA_GATE=off turns it off.
+export const YOUTUBE_CONFLICT_RE = /\b(suspen\w*|bann?ed|ban|fined?|fired|sack(ed|s)?|eject\w*|arrest\w*|slam\w*|blast\w*|rips?|fum\w*|furious|outburst|profan\w*|feud\w*|clash\w*|spat|row|accus\w*|allegation\w*|investigat\w*|lawsuit|sues?|sued|attack\w*|hits? back|calls? out|lash\w* out|refus\w*|walk\w* out|demand\w*|benched|drama|controvers\w*|critici[sz]\w*|warning|warned|resign\w*|quit\w*|threat\w*|angry|anger|heated|blame\w*|apolog\w*|tears|emotional|crying|struggl\w*)\b/i;
+export const YOUTUBE_BIG_MOMENT_RE = /\b(game 7|game-winner|buzzer|walk-?off|upset|stun\w*|shock\w*|comeback|retire\w*|retirement|injur\w*|out for (the )?season|torn|acl)\b/i;
+export const isDramaStory = (title: string): boolean => YOUTUBE_CONFLICT_RE.test(title) || YOUTUBE_BIG_MOMENT_RE.test(title);
+export function youtubeStoryAllowed(channel: YoutubeChannel, title: string, postedLast24h: number, maxPerDay: number, env: Record<string, string | undefined> = process.env): boolean {
+  if (channel !== "en" || env.YOUTUBE_DRAMA_GATE?.trim().toLowerCase() === "off" || isDramaStory(title)) return true;
+  return postedLast24h < Math.floor(maxPerDay / 2);
+}

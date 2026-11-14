@@ -299,12 +299,25 @@ export interface PhotoCandidate {
   nameInFile?: boolean;
   // The file name or title suggests several people (team photo, ceremony).
   group?: boolean;
+  // Taken during play (batting, dribbling, racing...) rather than a portrait or an object (photoKind below).
+  kind?: "action" | "portrait" | "other";
 }
 
 // File names/titles of group photos: "Burrow_and_Bernard.jpg",
 // "LSU_Football_at_the_White_House.jpg" (both picked for a Joe Burrow story in
 // the first live test, 2026-11-06). Pure.
 const GROUP_PHOTO_PATTERN = /\b(and|with|team|squad|teammates|white house|ceremony|parade|group|celebrat\w*|reception|visit|mural|vs|v|champions league|europa league|fu(ss|ß)ball|premier league|friendly|final)\b|\(\d{1,2}-\d{1,2}\)/i;
+// What kind of photo a Commons file is, from its file name and description (2026-11-14, user's request for more attractive pictures): the
+// best Shorts showed the actual moment of play, the weakest a posed portrait or an object (a shirt on a hanger for a caps record). Action shots
+// rank up and portraits down in scorePhoto; the person must still be named, so this only reorders that person's photos. Pure.
+const ACTION_PHOTO_PATTERN = /\b(in action|during|batting|bowling|bowls|fielding|wicket|dribbl\w*|shoot\w*|header|tackl\w*|pitch(ing|es)?|throw\w*|passing|rush\w*|runs?|running|dunk\w*|layup|serv(e|es|ing)|backhand|forehand|swing\w*|putt\w*|tee shot|racing|race|lap|qualifying|grand prix|practice|warm[- ]?up|training|sprint\w*|jump\w*|fight|bout|punch\w*|scor(es|ing)|goal|touchdown|match|game|playoff)\b/i;
+const PORTRAIT_PHOTO_PATTERN = /\b(portrait|headshot|head shot|press conference|presser|interview|cropped|crop|award|gala|red carpet|premiere|signing|official photo|mugshot|suit|jersey|shirt|kit|statue|mural|autograph)\b/i;
+export function photoKind(fileNameAndDescription: string): "action" | "portrait" | "other" {
+  const text = fileNameAndDescription.replace(/_+/g, " ");
+  if (ACTION_PHOTO_PATTERN.test(text)) return "action";
+  if (PORTRAIT_PHOTO_PATTERN.test(text)) return "portrait";
+  return "other";
+}
 export function looksLikeGroupPhoto(fileNameAndTitle: string): boolean {
   return GROUP_PHOTO_PATTERN.test(fileNameAndTitle.replace(/_+/g, " "));
 }
@@ -351,8 +364,10 @@ export function namesPerson(personName: string, fileName: string, description: s
 
 // Higher is better. Recent beats old (kit and team change), landscape beats
 // portrait (story photos are shown wide), large beats small. Pure.
-export function scorePhoto(c: Pick<PhotoCandidate, "width" | "height" | "year" | "isLead" | "nameInFile" | "group">, nowYear = new Date().getUTCFullYear()): number {
+export function scorePhoto(c: Pick<PhotoCandidate, "width" | "height" | "year" | "isLead" | "nameInFile" | "group" | "kind">, nowYear = new Date().getUTCFullYear()): number {
   let score = 0;
+  if (c.kind === "action") score += 2;
+  else if (c.kind === "portrait") score -= 1;
   if (c.nameInFile) score += 2;
   if (c.group) score -= 4;
   if (c.year !== null) {
@@ -439,6 +454,7 @@ async function fetchPersonPhotoCandidates(title: string, personName: string): Pr
       isLead,
       nameInFile: namesPerson(personName, fileName, ""),
       group: looksLikeGroupPhoto(`${fileName} ${stripHtml(meta.ObjectName?.value ?? "")}`),
+      kind: photoKind(`${fileName} ${stripHtml(description)}`),
     });
   }
   return candidates;

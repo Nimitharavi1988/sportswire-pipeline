@@ -35,7 +35,7 @@ import { logDecision, setDecisionContext, clearDecisionContext, decisionContextF
 import { reelFeatures } from "./decisionFeatures";
 import { openingFor } from "./reelOpening";
 import { storyTypeOf, STYLES_BY_TYPE } from "./hookStyles";
-import { youtubeConfigured, uploadShort, shortsTitleFor, shortsDescription, shortsTags, youtubeSlotOpen, spanishShortsHourOpen, uploadLimitPauseActive, UPLOAD_LIMIT_MESSAGE, UPLOAD_LIMIT_PAUSE_HOURS, maxShortsPerDayFor, minGapMinutes, youtubeSportAllowed, priorityReserve, titleVariantFor, decorateShortsTitle } from "./youtube";
+import { youtubeConfigured, uploadShort, shortsTitleFor, shortsDescription, shortsTags, youtubeSlotOpen, spanishShortsHourOpen, uploadLimitPauseActive, UPLOAD_LIMIT_MESSAGE, UPLOAD_LIMIT_PAUSE_HOURS, maxShortsPerDayFor, minGapMinutes, youtubeSportAllowed, youtubeStoryAllowed, priorityReserve, titleVariantFor, decorateShortsTitle } from "./youtube";
 
 // Posts a story as a Reel to Instagram and the main Facebook Page. Runs in
 // the post-reel GitHub Actions job only (renderReel needs plain Node).
@@ -412,6 +412,7 @@ export async function postReel(
     if (!youtubeSlotOpen(lastDay, last, new Date(), maxShortsPerDayFor(ytChannel ?? "en"), minGapMinutes())) { needYouTube = false; whySkipped.push("youtube pacing: daily cap or minimum gap"); }
     else if (!ytTodayOk) { needYouTube = false; whySkipped.push("youtube pacing: ahead of the hourly curve"); }
     else if (!youtubeSportAllowed(ytChannel ?? "en", article.category, lastDay, maxShortsPerDayFor(ytChannel ?? "en"), priorityReserve())) { console.log(`[youtube short] skipped: ${article.category} waits for a free slot (the last ${priorityReserve()} of ${maxShortsPerDayFor(ytChannel ?? "en")} a day go to the best-performing sports)`); needYouTube = false; whySkipped.push(`youtube: ${article.category} waits for a free slot`); }
+    else if (!youtubeStoryAllowed(ytChannel ?? "en", article.title, lastDay, maxShortsPerDayFor(ytChannel ?? "en"))) { console.log(`[youtube short] skipped: routine story; the rest of today's Shorts wait for drama (youtube.ts isDramaStory)`); needYouTube = false; whySkipped.push("youtube: routine story, slots kept for drama"); }
   }
   if (needYouTube) {
     // YouTube's own daily upload limit was hit recently on this channel: pause, don't render and fail again (youtube.ts).
