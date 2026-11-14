@@ -7,6 +7,7 @@ import { generateSocialCaptions } from "@/lib/ingestion/commentary";
 import { selectInstagramHashtags, selectTopicInstagramHashtags } from "./hashtagRepertoire";
 import { resolvePageAccessToken, translationFor } from "./facebook";
 import { instagramCoolingDown } from "./metaCooldown";
+import { withTopicPoster } from "./socialPoster";
 import { TOPIC_INSTAGRAM_KEYS, type FacebookDestination } from "./facebookDestinations";
 
 
@@ -91,6 +92,15 @@ export async function postArticleToInstagram(articleId: string, topicPage?: Face
   const hashtags = pickHashtags(article.title, article.category).join(" ");
   const caption = `${emoji} ${captionBody}\n\n${hashtags}`;
 
+  // The English topic accounts post a generated poster (hook, fact rows, branding) instead of the bare photo (socialPoster.ts withTopicPoster);
+  // a story too thin for a poster is skipped. The Spanish account keeps the photo: the poster's fixed text is English.
+  if (topicPage && !topicPage.locale) {
+    const posted = await withTopicPoster(article, topicPage.key, (posterUrl) => publish(posterUrl));
+    return posted ?? false;
+  }
+  return publish(imageUrl);
+
+  async function publish(imageUrl: string): Promise<boolean> {
   const [socialPost] = await db.insert(socialPostTable)
     .values({ id: createId(), articleId, platform: "instagram", destination, status: "queued" })
     .returning();
@@ -140,5 +150,6 @@ export async function postArticleToInstagram(articleId: string, topicPage?: Face
       .set({ status: "failed", errorMessage: err instanceof Error ? err.message : String(err) })
       .where(eq(socialPostTable.id, socialPost.id));
     throw err;
+  }
   }
 }

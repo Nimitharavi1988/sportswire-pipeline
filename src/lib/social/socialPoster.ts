@@ -290,3 +290,32 @@ export async function postSocialPoster(
     }
   }
 }
+
+// A generated poster (hook, fact rows, branding) for a topic account's Instagram photo post (2026-11-14, user's request: "not just the photo,
+// a generated photo with hook and everything"). Until then the topic accounts posted the bare story photo. Renders the poster, serves it for
+// Instagram to fetch under its own key, runs `post` with its public URL and always removes it after. Null when the story has too few facts
+// for a poster (generatePosterContent), so the caller skips that story rather than posting a bare photo.
+export async function withTopicPoster<T>(
+  article: { slug: string; title: string; body: string | null; heroImageUrl: string | null; category: string; heroImageCredit: string | null },
+  topicKey: string,
+  post: (publicUrl: string) => Promise<T>,
+): Promise<T | null> {
+  if (!article.heroImageUrl || !article.body) return null;
+  const content = await generatePosterContent(article.title, article.body);
+  if (!content) {
+    console.log(`[instagram:${topicKey}] no poster (too few facts) for "${article.title.slice(0, 60)}"`);
+    return null;
+  }
+  const png = await renderInstagramPoster({ content, heroImageUrl: article.heroImageUrl, category: article.category, credit: article.heroImageCredit });
+  const key = `${article.slug}-${topicKey}`;
+  const publicUrl = `${process.env.SITE_URL ?? "https://sportswirelive.com"}/social-posters/${key}.png`;
+  const pngBase64 = Buffer.from(png).toString("base64");
+  await db.insert(socialPosterImage).values({ slug: key, pngBase64 })
+    .onConflictDoUpdate({ target: socialPosterImage.slug, set: { pngBase64, createdAt: new Date() } });
+  try {
+    await waitUntilLive(publicUrl);
+    return await post(publicUrl);
+  } finally {
+    await db.delete(socialPosterImage).where(eq(socialPosterImage.slug, key)).catch((err) => console.error("[instagram] poster cleanup failed (non-fatal):", err));
+  }
+}
