@@ -10,7 +10,7 @@ import type { HookStyle } from "./hookStyles";
 
 export interface HookCandidate { style: HookStyle | "model"; hook: string }
 export interface ScoredCandidate extends HookCandidate { score: number; ok: boolean; problems: string[] }
-export interface HookChoice { hook: string; style: HookStyle | "model" | "fallback"; by: "best" | "explore" | "fallback"; candidates: ScoredCandidate[] }
+export interface HookChoice { hook: string; style: HookStyle | "model" | "fallback"; by: "best" | "explore" | "fallback" | "test"; candidates: ScoredCandidate[]; testArm?: HookTestArm | null }
 
 // Starting weights per style: the top-viewed sports Shorts so far were mostly a named person plus a reaction, a
 // record or a question (commentary.ts). Modest priors to be replaced by measured results (decision log + reports).
@@ -18,6 +18,16 @@ export const STYLE_PRIOR: Record<HookStyle | "model", number> = {
   quote: 1.15, reaction: 1.15, number: 1.1, hottake: 1.05, question: 1.05, record: 1.0, contrast: 1.0, breaking: 1.0, stakes: 0.95, next: 0.9, model: 1.0,
 };
 export const EXPLORE_SHARE = 0.2;
+// YouTube hook test (2026-11-14 to about 11-21): on the English Shorts, reaction, model and stakes hooks had median views of 423, 251 and 151
+// against 57 for number and 60 for question (262 Shorts, Oct 30 to Nov 12), but those groups were small (9-18 Shorts). Half the stories, by
+// article id, take the best valid hook in one of these styles when there is one ("favour"); the other half keep the usual pick ("control").
+// The arm is logged (hookTestArm) so the two halves can be compared at the same age. HOOK_TEST=off ends it.
+export type HookTestArm = "favour" | "control";
+export const HOOK_TEST_FAVOURED: (HookStyle | "model")[] = ["reaction", "model", "stakes"];
+export function hookTestArm(articleId: string, env: Record<string, string | undefined> = process.env): HookTestArm | null {
+  if (env.HOOK_TEST?.trim().toLowerCase() === "off") return null;
+  return unit(articleId, "ytHookTest") < 0.5 ? "favour" : "control";
+}
 
 const words = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter((w) => w.length > 2);
 const overlap = (a: string, b: string) => { const A = new Set(words(a)), B = new Set(words(b)); if (!A.size || !B.size) return 0; let n = 0; for (const w of A) if (B.has(w)) n++; return n / Math.min(A.size, B.size); };
@@ -48,7 +58,8 @@ function unit(id: string, salt: string): number {
   return (h % 10000) / 10000;
 }
 
-export function chooseHook(raw: HookCandidate[], title: string, body: string, articleId: string): HookChoice {
+export function chooseHook(raw: HookCandidate[], title: string, body: string, articleId: string, env: Record<string, string | undefined> = process.env): HookChoice {
+  const testArm = hookTestArm(articleId, env);
   const seen = new Set<string>();
   const candidates: ScoredCandidate[] = [];
   for (const c of raw) {
@@ -59,10 +70,14 @@ export function chooseHook(raw: HookCandidate[], title: string, body: string, ar
     candidates.push({ style: c.style, hook, ok: check.ok, problems: check.problems, score: scoreHook(hook, c.style, title) });
   }
   const valid = candidates.filter((c) => c.ok).sort((a, b) => b.score - a.score);
-  if (!valid.length) return { hook: safeHookFromTitle(title), style: "fallback", by: "fallback", candidates };
+  if (!valid.length) return { hook: safeHookFromTitle(title), style: "fallback", by: "fallback", candidates, testArm };
   if (valid.length > 1 && unit(articleId, "explore") < EXPLORE_SHARE) {
     const pick = valid[Math.floor(unit(articleId, "pick") * valid.length)];
-    return { hook: pick.hook, style: pick.style, by: "explore", candidates };
+    return { hook: pick.hook, style: pick.style, by: "explore", candidates, testArm };
   }
-  return { hook: valid[0].hook, style: valid[0].style, by: "best", candidates };
+  if (testArm === "favour") {
+    const favoured = valid.find((c) => HOOK_TEST_FAVOURED.includes(c.style));
+    if (favoured) return { hook: favoured.hook, style: favoured.style, by: "test", candidates, testArm };
+  }
+  return { hook: valid[0].hook, style: valid[0].style, by: "best", candidates, testArm };
 }

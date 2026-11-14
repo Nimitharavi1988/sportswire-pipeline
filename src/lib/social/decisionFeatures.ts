@@ -27,7 +27,7 @@ export interface ReelFeatureInput {
   noPhoto?: boolean;
   // The main Page caption had the sport put first (the 2026-11-10 test; null for topic Pages): reelKeyword.ts mainKeywordOn.
   captionKeyword?: boolean | null;
-  hookMeta?: { style: string; by: string; candidates: unknown[] };
+  hookMeta?: { style: string; by: string; testArm?: string | null; candidates: unknown[] };
 }
 
 export function reelFeatures(i: ReelFeatureInput): Record<string, unknown> {
@@ -58,6 +58,7 @@ export function reelFeatures(i: ReelFeatureInput): Record<string, unknown> {
     captionKeyword: i.captionKeyword ?? null,
     hookStyle: i.hookMeta?.style ?? null,
     hookChosenBy: i.hookMeta?.by ?? null,
+    hookTestArm: i.hookMeta?.testArm ?? null,
     hookCandidates: i.hookMeta?.candidates ?? null,
     hashtags: i.hashtags ?? null,
   };

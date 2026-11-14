@@ -457,7 +457,7 @@ export interface PosterContent {
   hook: string;
   rows: { label: string; value: string }[];
   // Set when several candidate hooks were written and one chosen: the choice and every candidate with its check and score.
-  hookMeta?: { style: string; by: string; candidates: { style: string; hook: string; score: number; ok: boolean; problems: string[] }[] };
+  hookMeta?: { style: string; by: string; testArm?: string | null; candidates: { style: string; hook: string; score: number; ok: boolean; problems: string[] }[] };
 }
 
 // Bespoke per-article poster copy (bold hook headline + a quick-read fact
@@ -515,7 +515,7 @@ export async function generatePosterContent(title: string, body: string, languag
     ];
     const choice: HookChoice = chooseHook(raw, title, body, opts.articleId);
     hook = choice.hook;
-    hookMeta = { style: choice.style, by: choice.by, candidates: choice.candidates.map((c) => ({ style: c.style, hook: c.hook, score: c.score, ok: c.ok, problems: c.problems })) };
+    hookMeta = { style: choice.style, by: choice.by, testArm: choice.testArm ?? null, candidates: choice.candidates.map((c) => ({ style: c.style, hook: c.hook, score: c.score, ok: c.ok, problems: c.problems })) };
   }
   const rows = Array.isArray(parsed.rows)
     ? parsed.rows
