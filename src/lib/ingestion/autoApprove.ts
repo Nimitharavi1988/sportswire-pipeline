@@ -1,4 +1,5 @@
 import { db } from "@/db";
+import { STALE_NO_IMAGE_HOURS, STALE_NO_BODY_HOURS } from "./staleWindows";
 import { article, socialPost, postDecision } from "@/db/schema";
 import { indiaAwake, regionTimingWeight } from "../social/regionSchedule";
 import { FACEBOOK_REEL_CURVE, curveTarget, reelPacingOn } from "../social/reelPacing";
@@ -799,7 +800,7 @@ async function sendAutomatedPushNotifications(toApprove: { id: string; slug: str
 // rather than having failed one — a genuinely failed attempt is already
 // rejected same-run by runIngest.ts itself, so this window exists purely
 // to give budget-queued items their turn, not to protect bad content.
-export const STALE_NO_IMAGE_HOURS = 12;
+export { STALE_NO_IMAGE_HOURS }; // value in staleWindows.ts
 
 // A real story that still has no real photo after FALLBACK_CARD_AFTER_MINUTES (none for a big story) gets one of our branded cards instead of waiting to be
 // rejected (fallbackCards.ts). Only the sports listed in FALLBACK_CARD_CATEGORIES, only stories that already have a write-up, are not
@@ -934,7 +935,7 @@ export async function rejectStaleNoImageArticles(): Promise<number> {
 // from outside, so this still gives every item a real window (~48 cron
 // cycles) before concluding it's not going to get a body, rather than
 // rejecting on the very run it was ingested.
-export const STALE_NO_BODY_HOURS = 12;
+export { STALE_NO_BODY_HOURS }; // value in staleWindows.ts
 
 export async function rejectStaleNoBodyArticles(): Promise<number> {
   const cutoff = new Date(Date.now() - STALE_NO_BODY_HOURS * 60 * 60 * 1000);
