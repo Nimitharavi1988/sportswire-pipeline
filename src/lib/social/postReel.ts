@@ -489,19 +489,22 @@ export async function postReel(
   const render = (youtube: boolean, motionHook: boolean, facebook = false) => renderReel({ content, heroImageUrl: article.heroImageUrl!, category: article.category, credit: article.heroImageCredit, musicStyle: music, theme, font: opts.font, language: locale, score, facebook, followHandle: opts.topicPage ? opts.topicPage.instagramHandle ?? null : undefined, youtube, opening, voicePath: (youtube ? youtubeVoicePath : voicePath) ?? undefined, graphic: plan.graphic ? { seed: article.id } : undefined, motionHook, soundHook: Boolean(opts.topicPage), punchZoom: Boolean(opts.topicPage) });
   // Instagram/Facebook share one render per version (motion hook or classic); the YouTube Short gets its own end card (Subscribe, link in the description).
   // Only Instagram uses the shared renders now (Facebook has its own below), so a version only Facebook wanted is not rendered twice.
-  const mp4Motion = needInstagram && plan.instagramMotion ? await render(false, true) : null;
-  const mp4Classic = needInstagram && !plan.instagramMotion ? await render(false, false) : null;
-  for (const m of [mp4Motion, mp4Classic]) if (m) console.log(`Rendered ${(m.length / 1024 / 1024).toFixed(1)} MB`);
-  const mp4Instagram = plan.instagramMotion ? mp4Motion : mp4Classic;
+  // The Instagram, Facebook and YouTube versions render at the same time (2026-11-14): one after another they took about 2 min 15 s each, so a
+  // main reel held the 15-minute ingest run for 5-7 minutes and runs overlapped (about half were cancelled). Each render has its own temp folder.
+  // An Instagram render failure still fails the reel as before; the Facebook and YouTube renders fail on their own.
+  const igRender = needInstagram ? render(false, plan.instagramMotion) : Promise.resolve(null);
   // Facebook gets its own render, with an end card that does not say "link in bio" or name an Instagram handle (reel.tsx endCardText).
-  const mp4Facebook = needFacebook ? await render(false, plan.facebookMotion, true).catch((err) => { console.error("Facebook end-card render failed:", err); return null; }) : null;
+  const fbRender = needFacebook ? render(false, plan.facebookMotion, true).catch((err) => { console.error("Facebook end-card render failed:", err); return null; }) : Promise.resolve(null);
+  const ytRender = needYouTube ? render(true, plan.youtubeMotion).catch((err) => { console.error("[youtube short] render failed:", err); return null; }) : Promise.resolve(null);
+  const [mp4Instagram, mp4Facebook] = await Promise.all([igRender.catch(async (err) => { await Promise.allSettled([fbRender, ytRender]); throw err; }), fbRender]);
+  if (mp4Instagram) console.log(`Rendered ${(mp4Instagram.length / 1024 / 1024).toFixed(1)} MB`);
 
   const siteUrl = locale ? `https://${LOCALES[locale].host}` : process.env.SITE_URL ?? "https://sportswirelive.com";
   const articleUrl = socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "facebook", reelVariant, opts.topicPage?.key);
   const instagramPosted = needInstagram && mp4Instagram ? await postReelToInstagram(article, mp4Instagram, captions, opts.topicPage) : false;
   const facebookPosted = needFacebook && mp4Facebook ? await postReelToFacebook(article, mp4Facebook, captions, articleUrl, opts.topicPage, facebookShortCaption(captionVariantFor(articleId), Boolean(opts.topicPage?.reelCaptionTest))) : false;
   // Never lets a YouTube problem (e.g. the row insert) undo the Instagram/Facebook posts above.
-  const youtubePosted = needYouTube ? await render(true, plan.youtubeMotion).then((yt) => postReelToYouTube(article, yt, captions, socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "youtube"), content.hook, textTitle, opts.topicPage)).catch((err) => { console.error("[youtube short] failed:", err); return false; }) : false;
+  const youtubePosted = needYouTube ? await ytRender.then((yt) => (yt ? postReelToYouTube(article, yt, captions, socialArticleUrl(siteUrl, tr?.slug ?? article.slug, "youtube"), content.hook, textTitle, opts.topicPage) : false)).catch((err) => { console.error("[youtube short] failed:", err); return false; }) : false;
   return { instagramPosted, facebookPosted, youtubePosted };
 }
 
