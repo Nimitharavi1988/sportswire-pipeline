@@ -72,7 +72,7 @@ export async function postStatsReels(now: Date, mode: "dry" | "on", room: number
       if (t.dest && !process.env[t.dest.tokenEnv]) continue;
       const igAllowed = !t.dest ? true : Boolean(t.dest.reels?.instagram && t.dest.instagramId && !instagramPaused(t.dest.key));
       try {
-        const res = await postDataReel(r.articleId, mp4, { facebook: r.caption, instagram: r.caption }, r.hook, { instagram: igAllowed, facebook: true, youtube: !t.dest && !youtubeDone, topicPage: t.dest });
+        const res = await postDataReel(r.articleId, mp4, { facebook: r.caption, instagram: r.caption }, r.hook, { instagram: igAllowed, facebook: true, youtube: !t.dest && !youtubeDone, topicPage: t.dest, youtubeTitle: r.youtubeTitle });
         console.log(`[stats reel] ${t.key}: instagram=${res.instagramPosted} facebook=${res.facebookPosted} youtube=${res.youtubePosted}`);
         if (res.youtubePosted) youtubeDone = true;
       } catch (err) {

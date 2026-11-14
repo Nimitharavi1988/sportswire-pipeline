@@ -124,6 +124,17 @@ export interface StatsReel {
   hook: string;
   caption: string;
   source: string;
+  // The YouTube title: the exact words fans search after a game (statsShortTitle).
+  youtubeTitle: string;
+}
+
+// A stats Short's YouTube title in the words fans type after a game (2026-11-14, user's choice): "Detroit Lions vs New England Patriots 31-24:
+// match stats". Team vs team and the score with a plain hyphen, no sport suffix (the names already say it) and never "highlights" (there is no
+// match footage). Under 60 characters: the ": match stats" tail goes first, then the score. Pure, unit-tested.
+export function statsShortTitle(home: string, away: string, homeScore: number, awayScore: number, max = 60): string {
+  const teams = `${home} vs ${away}`;
+  for (const t of [`${teams} ${homeScore}-${awayScore}: match stats`, `${teams} ${homeScore}-${awayScore}`, teams]) if (t.length <= max) return t;
+  return teams.slice(0, max).trim();
 }
 
 export type StatsVerdict = { ok: true; reel: StatsReel } | { ok: false; reason: string };
@@ -159,6 +170,7 @@ export function buildMatchStats(m: MatchStatsInput, now: Date = new Date(), maxA
       hook,
       caption,
       source: m.box.source || "ESPN",
+      youtubeTitle: statsShortTitle(m.home, m.away, m.homeScore, m.awayScore),
     },
   };
 }

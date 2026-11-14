@@ -294,10 +294,11 @@ async function postReelToFacebook(article: ArticleWithVertical, mp4: Buffer, cap
 // The same MP4 as a YouTube Short, on the English channel (main) or the Spanish one (the Spanish Page's
 // reels, in Spanish). Off unless YOUTUBE_SHORTS_ENABLED=1 (youtube.ts); recorded as platform "youtube",
 // destination "reel" (English) or "es-reel".
-async function postReelToYouTube(article: ArticleWithVertical, mp4: Buffer, captions: SocialCaptions | null, articleUrl: string, hook: string, title0: string, topicPage?: FacebookDestination): Promise<boolean> {
+async function postReelToYouTube(article: ArticleWithVertical, mp4: Buffer, captions: SocialCaptions | null, articleUrl: string, hook: string, title0: string, topicPage?: FacebookDestination, titleOverride?: string): Promise<boolean> {
   const spanish = topicPage?.locale === "es";
   const hashtags = topicPage?.hashtags ? topicPage.hashtags(title0, article.category) : selectFacebookHashtags(title0, article.category);
-  const plainTitle = shortsTitleFor(hook, title0, spanish ? "es" : "en", article.category);
+  // A stats Short brings its own search-style title (matchStats.ts statsShortTitle); a story reel's comes from its hook.
+  const plainTitle = titleOverride ?? shortsTitleFor(hook, title0, spanish ? "es" : "en", article.category);
   // Title: under 60 characters, names first, no emoji or hashtags (YouTube rules, 2026-10-29; the decorated-title test is over).
   const title = plainTitle;
   const description = shortsDescription(captions?.facebook ?? title0, hashtags, spanish ? "es" : "en", article.heroImageCredit, { category: article.category, title: plainTitle });
@@ -517,7 +518,7 @@ export async function postDataReel(
   mp4: Buffer,
   captions: SocialCaptions,
   hook: string,
-  opts: { instagram: boolean; facebook: boolean; youtube: boolean; topicPage?: FacebookDestination }
+  opts: { instagram: boolean; facebook: boolean; youtube: boolean; topicPage?: FacebookDestination; youtubeTitle?: string }
 ): Promise<{ instagramPosted: boolean; facebookPosted: boolean; youtubePosted: boolean }> {
   const none = { instagramPosted: false, facebookPosted: false, youtubePosted: false };
   clearDecisionContext();
@@ -540,7 +541,7 @@ export async function postDataReel(
   const instagramPosted = igOk ? await postReelToInstagram(article, mp4, captions, opts.topicPage) : false;
   const facebookPosted = fbOk ? await postReelToFacebook(article, mp4, captions, socialArticleUrl(siteUrl, article.slug, "facebook", "data", opts.topicPage?.key), opts.topicPage, false) : false;
   const youtubePosted = ytOk
-    ? await postReelToYouTube(article, mp4, captions, socialArticleUrl(siteUrl, article.slug, "youtube"), hook, hook, opts.topicPage).catch((err) => { console.error("[data reel] YouTube post failed:", err); return false; })
+    ? await postReelToYouTube(article, mp4, captions, socialArticleUrl(siteUrl, article.slug, "youtube"), hook, hook, opts.topicPage, opts.youtubeTitle).catch((err) => { console.error("[data reel] YouTube post failed:", err); return false; })
     : false;
   return { instagramPosted, facebookPosted, youtubePosted };
 }
