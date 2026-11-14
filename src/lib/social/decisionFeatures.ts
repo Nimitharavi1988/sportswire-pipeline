@@ -22,6 +22,8 @@ export interface ReelFeatureInput {
   voice?: string | null;
   // The YouTube Short had the commentary voice (it can, while the Instagram and Facebook reels of the same story are silent).
   youtubeVoice?: boolean;
+  voiceSpeed?: number | null;
+  voiceText?: "full" | "short" | null;
   // The hook layout (hookLayout.ts) and whether the story had no photo of its own (a graphic reel): recorded from 2026-11-07.
   layout?: string;
   noPhoto?: boolean;
@@ -53,6 +55,8 @@ export function reelFeatures(i: ReelFeatureInput): Record<string, unknown> {
     opening: i.opening ?? null,
     voice: i.voice ?? null,
     youtubeVoice: i.youtubeVoice ?? null,
+    voiceSpeed: i.voiceSpeed ?? null,
+    voiceText: i.voiceText ?? null,
     layout: i.layout ?? null,
     noPhoto: i.noPhoto ?? null,
     captionKeyword: i.captionKeyword ?? null,

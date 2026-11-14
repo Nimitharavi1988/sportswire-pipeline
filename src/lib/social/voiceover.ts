@@ -234,14 +234,17 @@ export async function synthesizeVoice(text: string, voice: string, speed = 1.05,
   }
 }
 
-// A voice track that fits the reel: the description at its natural pace, then faster, then the short sport-and-hook text.
-export async function makeVoice(script: string, shortScript: string, voice: string, seed?: number): Promise<{ path: string; seconds: number; text: string } | null> {
-  const tries: [string, number][] = [[script, 1.05], [script, 1.2], [shortScript, 1.1]];
-  for (const [text, speed] of tries) {
+// A voice track that fits the reel: the description at its natural pace, then the short sport-and-hook text at the same pace, and only then
+// a little faster. Until 2026-11-14 a long description was sped up to 1.2 first, which sounds rushed; shorter words at a natural pace read
+// better than more words said fast. VOICE_TRIES are the (script, speed) steps, unit-tested.
+export const VOICE_TRIES: ["full" | "short", number][] = [["full", 1.05], ["short", 1.05], ["short", 1.12]];
+export async function makeVoice(script: string, shortScript: string, voice: string, seed?: number): Promise<{ path: string; seconds: number; text: string; speed: number; voice: string } | null> {
+  for (const [which, speed] of VOICE_TRIES) {
+    const text = which === "full" ? script : shortScript;
     const path = await synthesizeVoice(text, voice, speed, seed);
     if (!path) return null;
     const seconds = wavSeconds(await readFile(path));
-    if (seconds > 0 && seconds <= MAX_VOICE_SECONDS) return { path, seconds, text };
+    if (seconds > 0 && seconds <= MAX_VOICE_SECONDS) return { path, seconds, text, speed, voice };
     console.log(`[voiceover] ${seconds.toFixed(1)} s is too long at speed ${speed}; trying a shorter take`);
   }
   return null;
