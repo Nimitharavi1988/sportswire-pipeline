@@ -45,7 +45,7 @@ const generateCommentary = (...args: Parameters<typeof generateCommentaryUntimed
 const generateMatchRecap = (...args: Parameters<typeof generateMatchRecapUntimed>) => timed("generateMatchRecap (Gemini)", () => generateMatchRecapUntimed(...args));
 const verifyCommentaryHasSubstance = (...args: Parameters<typeof verifyCommentaryHasSubstanceUntimed>) => timed("verifyCommentaryHasSubstance (Gemini)", () => verifyCommentaryHasSubstanceUntimed(...args));
 import { extractArticleContent, extractArticleContentDetailed } from "./articleTextExtractor";
-import { commonsFileKey, fetchPersonPhoto, loadPhotoCache, namedInTitle, orderPhotoNames, photoLookupSummary, savePhotoCache, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
+import { commonsFileKey, fetchPersonPhoto, loadPhotoCache, namedInTitle, orderPhotoNames, photoLookupSummary, photoNamesFor, savePhotoCache, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
 import { isExcludedSource } from "../excludedSources";
 import { competitionFromSummary } from "../teamNames";
 import { MATCH_DATA_SOURCE_NAMES, isMatchDataSource, supersedes } from "../matchDataSources";
@@ -738,7 +738,7 @@ export async function runIngest() {
               if (grounding.imageUrl) {
                 heroImageUpdate = { heroImageUrl: grounding.imageUrl, heroImageCredit: `Photo via ${item.sourceName}` };
               } else {
-                for (const personName of personNames) {
+                for (const personName of photoNamesFor(item.title, personNames)) {
                   const personPhoto = await fetchPersonPhoto(personName, sportSearchHint(item.category), existing.slug);
                   if (personPhoto) {
                     heroImageUpdate = {
@@ -939,7 +939,7 @@ export async function runIngest() {
             if (betterPhoto) stockImage = betterPhoto;
           }
         } else if (!item.heroImageUrl && !item.knownPersonName) {
-          for (const personName of orderPhotoNames(item.title, personNames)) {
+          for (const personName of photoNamesFor(item.title, personNames)) {
             const personPhoto = await fetchPersonPhoto(personName, sportSearchHint(item.category), slug);
             if (personPhoto) {
               stockImage = personPhoto;

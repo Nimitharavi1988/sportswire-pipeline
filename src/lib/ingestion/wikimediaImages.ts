@@ -287,6 +287,14 @@ export function namedInTitle(title: string, name: string): boolean {
 export function orderPhotoNames(title: string, names: string[]): string[] {
   return [...names.filter((n) => namedInTitle(title, n)), ...names.filter((n) => !namedInTitle(title, n))];
 }
+// The people whose photo a story may use: only those the headline names, when it names any (2026-11-17: "Cowboys sign OL Nick Leverett"
+// had no photo of Leverett, so it took Tyler Booker, the injured guard he replaces, from the body; "Cardinals sign Harrison-Hunte, Williams"
+// took Jordan Burch, moved to injured reserve). With no one to show, the story gets its card instead. A headline that names nobody ("Three
+// free agents the Pirates should sign") keeps all the names. Pure, unit-tested.
+export function photoNamesFor(title: string, names: string[]): string[] {
+  const named = names.filter((n) => namedInTitle(title, n));
+  return named.length ? named : names;
+}
 
 // Files that turn up in an article's `prop=images` list but aren't a real
 // photo of the person — club crests, national flags, UI icons, locator
