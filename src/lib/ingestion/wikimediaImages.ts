@@ -248,13 +248,44 @@ async function searchWikipediaTitle(query: string): Promise<string | undefined> 
 async function resolvePersonTitle(personName: string, sportHint?: string): Promise<string | null> {
   const hintedQuery = sportHint ? `${personName} ${sportHint}` : personName;
   const hintedTitle = await searchWikipediaTitle(hintedQuery);
-  if (hintedTitle && titleMatchesName(hintedTitle, personName)) return hintedTitle;
+  if (hintedTitle && titleMatchesName(hintedTitle, personName) && (await isSportsPersonPage(hintedTitle))) return hintedTitle;
 
   if (sportHint) {
     const plainTitle = await searchWikipediaTitle(personName);
-    if (plainTitle && titleMatchesName(plainTitle, personName)) return plainTitle;
+    if (plainTitle && plainTitle !== hintedTitle && titleMatchesName(plainTitle, personName) && (await isSportsPersonPage(plainTitle))) return plainTitle;
   }
   return null;
+}
+
+// The same name can belong to someone outside sport (2026-11-17: Andhra cricketer Revanth Reddy has no Wikipedia page, so the search returned
+// Telangana's Chief Minister Revanth Reddy and his photo went on the cricket story). A page is used only when its one-line Wikipedia
+// description is not about someone outside sport ("Indian politician", "Indian poet") unless it also names a sport. A page with no description
+// is kept, as before. Pure, unit-tested.
+const SPORT_DESCRIPTION = /\b(cricket\w*|football\w*|soccer|basketball|baseball|hockey|tennis|golf\w*|boxer|boxing|mixed martial|mma|racing|racer|driver|cyclist|athlete|sprinter|runner|rugby|volleyball|wrestler|coach|manager|umpire|referee|sportsperson|sports?|player|jockey|swimmer|skater|padel|motorcycle|quarterback|pitcher|olympi\w*|ufc)\b/i;
+const NON_SPORT_DESCRIPTION = /\b(politician|minister|chief minister|actor|actress|singer|poet|lyricist|businessman|businesswoman|industrialist|film\w*|director|producer|journalist|musician|composer|rapper|model|lawyer|judge|activist|author|writer|television|presenter|comedian|monarch|prince|princess|bishop|cleric)\b/i;
+export function isSportsPersonDescription(description: string | null | undefined): boolean {
+  if (!description) return true;
+  if (SPORT_DESCRIPTION.test(description)) return true;
+  return !NON_SPORT_DESCRIPTION.test(description);
+}
+async function isSportsPersonPage(title: string): Promise<boolean> {
+  const data = await wikiFetch(`https://en.wikipedia.org/w/api.php?action=query&prop=description&titles=${encodeURIComponent(title)}&format=json`);
+  const pages = data?.query?.pages ?? {};
+  const description = (Object.values(pages)[0] as { description?: string } | undefined)?.description;
+  const ok = isSportsPersonDescription(description);
+  if (!ok) console.log(`[photo] skipped Wikipedia page "${title}" (${description}): not a sportsperson`);
+  return ok;
+}
+
+// Which of the people the write-up names gets the photo (2026-11-17): those the headline names come first, in the order the write-up ranked
+// them. The write-up ranks by how much the body mentions someone, so on "Dhoni breaks Instagram with retirement post" its first name was the
+// poet whose lyric Dhoni quoted, and tributes went to whoever paid them (Sehwag, Pathan, Zaheer Khan) instead of Dhoni. Pure, unit-tested.
+export function namedInTitle(title: string, name: string): boolean {
+  const t = normalizeTokens(name);
+  return t.length > 0 && new Set(normalizeTokens(title)).has(t[t.length - 1]);
+}
+export function orderPhotoNames(title: string, names: string[]): string[] {
+  return [...names.filter((n) => namedInTitle(title, n)), ...names.filter((n) => !namedInTitle(title, n))];
 }
 
 // Files that turn up in an article's `prop=images` list but aren't a real

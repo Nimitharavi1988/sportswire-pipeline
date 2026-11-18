@@ -45,7 +45,7 @@ const generateCommentary = (...args: Parameters<typeof generateCommentaryUntimed
 const generateMatchRecap = (...args: Parameters<typeof generateMatchRecapUntimed>) => timed("generateMatchRecap (Gemini)", () => generateMatchRecapUntimed(...args));
 const verifyCommentaryHasSubstance = (...args: Parameters<typeof verifyCommentaryHasSubstanceUntimed>) => timed("verifyCommentaryHasSubstance (Gemini)", () => verifyCommentaryHasSubstanceUntimed(...args));
 import { extractArticleContent, extractArticleContentDetailed } from "./articleTextExtractor";
-import { commonsFileKey, fetchPersonPhoto, loadPhotoCache, photoLookupSummary, savePhotoCache, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
+import { commonsFileKey, fetchPersonPhoto, loadPhotoCache, namedInTitle, orderPhotoNames, photoLookupSummary, savePhotoCache, setPhotoUsage, sportSearchHint } from "./wikimediaImages";
 import { isExcludedSource } from "../excludedSources";
 import { competitionFromSummary } from "../teamNames";
 import { MATCH_DATA_SOURCE_NAMES, isMatchDataSource, supersedes } from "../matchDataSources";
@@ -931,13 +931,15 @@ export async function runIngest() {
           // just which tracked name appears earliest in the headline. Only
           // worth a second lookup when it actually disagrees with what we
           // already used.
+          // Headline names first (wikimediaImages.ts orderPhotoNames), and only someone the headline names replaces the tracked player.
           const primaryPlayerName = resolvePrimaryPlayerName(item.title, item.knownPersonName);
-          if (personNames[0] !== primaryPlayerName) {
-            const betterPhoto = await fetchPersonPhoto(personNames[0], sportSearchHint(item.category), slug);
+          const lead = orderPhotoNames(item.title, personNames)[0];
+          if (lead !== primaryPlayerName && namedInTitle(item.title, lead)) {
+            const betterPhoto = await fetchPersonPhoto(lead, sportSearchHint(item.category), slug);
             if (betterPhoto) stockImage = betterPhoto;
           }
         } else if (!item.heroImageUrl && !item.knownPersonName) {
-          for (const personName of personNames) {
+          for (const personName of orderPhotoNames(item.title, personNames)) {
             const personPhoto = await fetchPersonPhoto(personName, sportSearchHint(item.category), slug);
             if (personPhoto) {
               stockImage = personPhoto;
