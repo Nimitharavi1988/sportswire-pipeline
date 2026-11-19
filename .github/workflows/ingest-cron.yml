@@ -113,6 +113,7 @@ jobs:
           MAIN_CAPTION_KEYWORD: ${{ vars.MAIN_CAPTION_KEYWORD }}
           REGION_SCHEDULE: ${{ vars.REGION_SCHEDULE }}
           REEL_PACING: ${{ vars.REEL_PACING }}
+          REEL_SUPERSAMPLE: ${{ vars.REEL_SUPERSAMPLE }}
           DATA_REELS: ${{ vars.DATA_REELS }}
           DATA_REEL_SPORTS: ${{ vars.DATA_REEL_SPORTS }}
           FACEBOOK_CAPTION_TEST: ${{ vars.FACEBOOK_CAPTION_TEST }}

@@ -46,9 +46,10 @@ const PORTRAIT_ASPECT =1080 / 1350;
 const PORTRAIT_PHOTO_TOP = 170;
 const PORTRAIT_PHOTO_H = 1350;
 const MIN_CROP_SOURCE_H = 560;
-// The photo layer is built at SS x size and scaled down at the end, so the
-// moving picture stays sharp.
-const SS = 2;
+// The photo layer was built at 2x size and scaled down at the end, so the moving picture stays sharp. At 1x (2026-11-18) the same reel renders in 55 s instead
+// of 91 s (about 40% less, and runs were taking 23-37 minutes); a frame from each is indistinguishable at full size and the frame-to-frame motion spread
+// measured 0.62 against 0.56 of the mean. REEL_SUPERSAMPLE=2 restores the old setting (1.5 gave no saving).
+const SS = Number(process.env.REEL_SUPERSAMPLE) > 0 ? Number(process.env.REEL_SUPERSAMPLE) : 1;
 // The whole photo layer moves once over the whole reel, eased in and out:
 // zooms 1.00 -> 1.00+ZOOM while drifting sideways across PAN_X of the room
 // the zoom frees up (left to right) and up by PAN_Y of it.
@@ -618,8 +619,8 @@ export async function renderReel(params: {
     const top = `((H-H/${zoom})*(${(1 + PAN_Y) / 2}-${PAN_Y}*${ease}))`;
     const right = `(${left}+W/${zoom})`;
     const bottom = `(${top}+H/${zoom})`;
-    const sw = W * SS;
-    const sh = H * SS;
+    const sw = Math.round(W * SS);
+    const sh = Math.round(H * SS);
     // Drawn art: the whole frame is the background, with a slow push-in.
     const gEase = `(1-pow(1-in/${frames}\\,3))`;
     const gZoom = `((1+0.06*${gEase})*${punch})`;
