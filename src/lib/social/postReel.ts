@@ -535,7 +535,14 @@ export async function postDataReel(
   const has = (p: string) => done.some((d) => d.platform === p);
   const igOk = opts.instagram && !has("instagram") && !(await instagramCoolingDown(destination)) && !(opts.topicPage && instagramPaused(opts.topicPage.key));
   const fbOk = opts.facebook && !has("facebook");
-  const ytOk = opts.youtube && !has("youtube") && youtubeConfigured("en");
+  let ytOk = opts.youtube && !has("youtube") && youtubeConfigured("en");
+  // A data Short is a routine one: it takes a free slot under the same daily cap, minimum gap and routine share as any other (youtube.ts), so it can never
+  // crowd out the important Shorts.
+  if (ytOk) {
+    const [{ value: lastDay, last }] = await db.select({ value: count(), last: max(socialPostTable.postedAt) }).from(socialPostTable)
+      .where(and(eq(socialPostTable.platform, "youtube"), ne(socialPostTable.destination, `${SPANISH_PAGE.key}-reel`), eq(socialPostTable.status, "posted"), gte(socialPostTable.postedAt, new Date(Date.now() - 24 * 3600 * 1000))));
+    if (!youtubeSlotOpen(lastDay, last, new Date(), maxShortsPerDayFor("en"), minGapMinutes()) || !youtubeStoryAllowed("en", "", lastDay, maxShortsPerDayFor("en"))) { ytOk = false; console.log("[data reel] YouTube Short skipped: no free routine slot today"); }
+  }
   if (!igOk && !fbOk && !ytOk) return none;
   const siteUrl = process.env.SITE_URL ?? "https://sportswirelive.com";
   const instagramPosted = igOk ? await postReelToInstagram(article, mp4, captions, opts.topicPage) : false;

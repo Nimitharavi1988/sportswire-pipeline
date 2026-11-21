@@ -429,5 +429,12 @@ export const YOUTUBE_BIG_MOMENT_RE = /\b(game 7|game-winner|buzzer|walk-?off|ups
 export const isDramaStory = (title: string): boolean => YOUTUBE_CONFLICT_RE.test(title) || YOUTUBE_BIG_MOMENT_RE.test(title);
 export function youtubeStoryAllowed(channel: YoutubeChannel, title: string, postedLast24h: number, maxPerDay: number, env: Record<string, string | undefined> = process.env): boolean {
   if (channel !== "en" || env.YOUTUBE_DRAMA_GATE?.trim().toLowerCase() === "off" || isDramaStory(title)) return true;
-  return postedLast24h < Math.floor(maxPerDay / 2);
+  return postedLast24h < Math.floor(maxPerDay * routineShare(env));
+}
+
+// The share of the day's English Shorts a routine story (no conflict or big-moment word) may take: 0.3 by default (2026-11-21, user: 10 Shorts a day, the important
+// ones first), so at 10 a day 3 slots go to routine stories and 7 wait for drama. Match stats and chart Shorts count as routine. YOUTUBE_ROUTINE_SHARE overrides (0 to 1).
+export function routineShare(env: Record<string, string | undefined> = process.env): number {
+  const n = Number(env.YOUTUBE_ROUTINE_SHARE);
+  return env.YOUTUBE_ROUTINE_SHARE !== undefined && env.YOUTUBE_ROUTINE_SHARE !== "" && Number.isFinite(n) && n >= 0 && n <= 1 ? n : 0.3;
 }
