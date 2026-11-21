@@ -109,7 +109,9 @@ const MAX_INSTAGRAM_POSTS_PER_DAY = 95;
 // failing ~90 Instagram posts a day, and every Facebook and Instagram call shares that limit.
 // Trimmed 30 -> 24 (2026-11-10, user): the Page's reels reached a median of 1-2 plays a day on Facebook (against about 140 on Instagram for the
 // same videos), so fewer, stronger ones. Facebook link posts stay as they are (they lead to the site). Instagram and YouTube reels are separate.
-const MAX_FACEBOOK_REELS_PER_DAY = 24;
+// 24 -> 6 (2026-11-21, user, after the data): a Facebook Page posting more reels a day gets fewer plays per reel (main Page: 5 a day in 06-14 UTC reached 50 plays 38% of
+// the time, 11 a day 22%); the Fight and Football Pages, with a handful a day, do best. Link posts and the other Pages are unchanged.
+const MAX_FACEBOOK_REELS_PER_DAY = 6;
 // Ceiling on ATTEMPTS within a single run (not just successes) — each
 // attempt is a full Gemini content-generation call plus a real git
 // commit/push/deploy-wait cycle, far more expensive than Facebook's plain

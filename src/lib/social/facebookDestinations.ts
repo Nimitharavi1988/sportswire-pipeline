@@ -211,7 +211,8 @@ export const FOOTBALL_PAGE: FacebookDestination = {
   instagramHandle: "sportswirefootballlive",
   // Reels (2026-10-08): 8 a day on Facebook and Instagram, strongest stories only.
   // Reel cap raised 8 -> 12 on 2026-10-15 (facebook reels median 18-152 here against 2 on the big Pages; the topic Instagram photo posts were cut to free the Meta request budget).
-  reels: { dailyCap: 12, perRunCap: 1, minTrending: 30, instagram: true },
+  // minTrending 30 -> 20 (2026-11-21): its reels did well at a low volume (27 reels since 11-10: typical 7 plays, 37% reaching 50), so more of its stories go out.
+  reels: { dailyCap: 12, perRunCap: 1, minTrending: 20, instagram: true },
   // Team, star and event tags for the sport (topicHashtags.ts), the sport's own tag, then the usual ones.
   hashtags: selectTopicFacebookHashtags,
   dailyCap: 25,
@@ -249,7 +250,8 @@ export const FIGHT_PAGE: FacebookDestination = {
   pageId: "1423517120834814",
   // No Instagram linked to this Page yet (checked 2026-10-08): reels on Facebook only.
   // Reel cap raised 4 -> 8 on 2026-10-15 (see the Football Page), 8 -> 12 on 2026-10-22 (user asked; watch plays per reel).
-  reels: { dailyCap: 12, perRunCap: 1, minTrending: 20 },
+  // minTrending 20 -> 10 (2026-11-21): the best-performing Page for reels (10 reels since 11-10: typical 245 plays, 90% reaching 50) posted only 10 in 11 days because few stories passed the floor.
+  reels: { dailyCap: 12, perRunCap: 1, minTrending: 10 },
   // Fewer stories exist (about 30 MMA + boxing a day), so a smaller cap.
   dailyCap: 14,
   perRunCap: 1,
