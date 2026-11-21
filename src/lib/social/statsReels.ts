@@ -44,7 +44,7 @@ export async function postStatsReels(now: Date, mode: "dry" | "on", room: number
   dayStart.setUTCHours(0, 0, 0, 0);
   const todayRows = await db.select({ category: article.category, articleId: socialPost.articleId, destination: socialPost.destination }).from(socialPost)
     .innerJoin(article, eq(socialPost.articleId, article.id))
-    .where(and(eq(socialPost.platform, "facebook"), eq(socialPost.destination, MAIN_REEL_DESTINATION), inArray(socialPost.status, ["posted", "queued"]), gte(socialPost.createdAt, dayStart), like(article.matchKey, "%")));
+    .where(and(eq(socialPost.platform, "instagram"), eq(socialPost.destination, MAIN_REEL_DESTINATION), inArray(socialPost.status, ["posted", "queued"]), gte(socialPost.createdAt, dayStart), like(article.matchKey, "%")));
   const postedBySport = new Map<string, number>();
   for (const t of todayRows) postedBySport.set(t.category, (postedBySport.get(t.category) ?? 0) + 1);
   let handled = 0;
@@ -52,10 +52,11 @@ export async function postStatsReels(now: Date, mode: "dry" | "on", room: number
     if (handled >= Math.min(MAX_PER_RUN, room)) break;
     if ((postedBySport.get(r.sport) ?? 0) >= (STATS_DAILY_CAP[r.sport] ?? 0)) continue;
     const doneRows = await db.select({ destination: socialPost.destination, platform: socialPost.platform }).from(socialPost)
-      .where(and(eq(socialPost.articleId, r.articleId), inArray(socialPost.status, ["posted", "queued"])));
+      .where(and(eq(socialPost.articleId, r.articleId), inArray(socialPost.status, ["posted", "queued", "failed"])));
     const page = PAGE_FOR[r.sport];
     const targets: { dest: FacebookDestination | undefined; key: string }[] = [{ dest: undefined, key: MAIN_REEL_DESTINATION }, ...(page ? [{ dest: page, key: `${page.key}-reel` }] : [])];
-    const pending = targets.filter((t) => !doneRows.some((d) => d.destination === t.key && d.platform === "facebook"));
+    // Instagram only (Facebook dropped 2026-11-21: 0-2 views there); a Page without a usable Instagram account is left out and a failed attempt counts as done.
+    const pending = targets.filter((t) => (!t.dest || Boolean(t.dest.reels?.instagram && t.dest.instagramId && !instagramPaused(t.dest.key))) && !doneRows.some((d) => d.destination === t.key));
     if (pending.length === 0) continue;
     handled++;
     console.log(`[stats reel] ${r.sport}: ${r.hook} -> ${pending.map((p) => p.key).join(", ")}${mode === "dry" ? " [dry run, nothing posted]" : ""}`);
@@ -72,7 +73,7 @@ export async function postStatsReels(now: Date, mode: "dry" | "on", room: number
       if (t.dest && !process.env[t.dest.tokenEnv]) continue;
       const igAllowed = !t.dest ? true : Boolean(t.dest.reels?.instagram && t.dest.instagramId && !instagramPaused(t.dest.key));
       try {
-        const res = await postDataReel(r.articleId, mp4, { facebook: r.caption, instagram: r.caption }, r.hook, { instagram: igAllowed, facebook: true, youtube: !t.dest && !youtubeDone, topicPage: t.dest, youtubeTitle: r.youtubeTitle });
+        const res = await postDataReel(r.articleId, mp4, { facebook: r.caption, instagram: r.caption }, r.hook, { instagram: igAllowed, facebook: false, youtube: !t.dest && !youtubeDone, topicPage: t.dest, youtubeTitle: r.youtubeTitle });
         console.log(`[stats reel] ${t.key}: instagram=${res.instagramPosted} facebook=${res.facebookPosted} youtube=${res.youtubePosted}`);
         if (res.youtubePosted) youtubeDone = true;
       } catch (err) {
