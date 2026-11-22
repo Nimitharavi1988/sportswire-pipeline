@@ -48,6 +48,7 @@ ${f.body}`;
 
 async function translateOnce(locale: LocaleConfig, f: Fields, model?: string, feedback: string[] = []): Promise<Fields | null> {
   const parsed = await callGemini(buildPrompt(locale, f, feedback), {
+    purpose: "translation",
     ...(model ? { model } : {}),
     temperature: 0.2,
     maxOutputTokens: 8192,

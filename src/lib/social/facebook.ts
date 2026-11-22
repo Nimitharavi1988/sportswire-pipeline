@@ -172,7 +172,7 @@ export async function postArticleToFacebook(articleId: string, destination?: Fac
   // Gemini failure so a hiccup can never block a Facebook post, same as
   // every other Gemini-dependent step here.
   const photoStyle = isPhotoPost;
-  const captions = postBody ? await generateSocialCaptions(postTitle, postBody, destination?.locale, photoStyle ? "question" : variant === "hook" ? "hook" : undefined) : null;
+  const captions = postBody ? await generateSocialCaptions(postTitle, postBody, destination?.locale, photoStyle ? "question" : variant === "hook" ? "hook" : undefined, destination?.key ?? "main") : null;
   const captionBody = captions?.facebook ?? postTitle;
   const hashtags = (destination?.hashtags ?? selectFacebookHashtags)(article.title, article.category).join(" ");
   const message = `${emojiFor(article.category)} ${captionBody}\n\n${hashtags}`;

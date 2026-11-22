@@ -93,6 +93,8 @@ interface GeminiCallOptions {
   // it, "low" (social copy) only a share, so a busy day's bulk work doesn't
   // leave nothing for the work that matters. Default "normal".
   priority?: Priority;
+  // What the call is for, counted per process (llm/router.ts noteAiCall).
+  purpose?: string;
 }
 
 // Standard Flash for the Instagram hook/caption writing (2026-10-01): a few
@@ -108,8 +110,24 @@ const COPY_MODEL = "gemini-flash-latest";
 // had declined it). Once set, further calls in this run are skipped.
 let unavailable: string | null = null;
 
-export function aiUnavailableReason(): string | null {
-  return unavailable;
+// A refusal from the router ("every free provider is at its limit") used to set `unavailable` for the rest of the process, so one refused social
+// caption stopped the news write-ups, reel copy and translations after it (2026-11-22: ingest made its last AI call at 02:20:15 and ran on until
+// 02:22:03 without one). A refusal now holds back only work of the same or lower priority, and only for LIMIT_BACKOFF_MS: a low-priority
+// refusal never blocks higher-priority work, a high-priority one blocks all. "Not configured", 402 and HTTP errors stay permanent (`unavailable`).
+const PRIORITY_RANK = { low: 0, normal: 1, high: 2 } as const;
+const LIMIT_BACKOFF_MS = 60_000;
+const LIMITED_REASON = "AI unavailable (every free provider is at its limit)";
+const limitedUntil = [0, 0, 0];
+let limitedThisRun = false;
+const rankOf = (p?: Priority): number => PRIORITY_RANK[p ?? "normal"];
+
+export function aiUnavailableReason(priority: Priority = "normal"): string | null {
+  if (unavailable) return unavailable;
+  return Date.now() < limitedUntil[rankOf(priority)] ? LIMITED_REASON : null;
+}
+// Whether any call this process was refused for lack of room, for the end-of-run note (the back-off window may be over by then).
+export function aiLimitedThisRun(): string | null {
+  return limitedThisRun ? LIMITED_REASON : null;
 }
 
 const UNAVAILABLE_STATUSES = new Set([401, 402, 403, 429, 500, 502, 503, 504]);
@@ -123,18 +141,24 @@ const RETRY = Symbol("retry");
 // non-default model). Otherwise it's the Gemini call below, unchanged.
 async function callViaRouter(router: LlmRouter, prompt: string, options: GeminiCallOptions): Promise<unknown> {
   if (unavailable) return null;
+  if (Date.now() < limitedUntil[rankOf(options.priority)]) return null;
   const result = await router.json({
     prompt,
     schema: options.responseSchema as GeminiSchema,
     tier: options.model && options.model !== MODEL ? "standard" : "lite",
     priority: options.priority,
+    purpose: options.purpose,
     temperature: options.temperature,
     maxOutputTokens: options.maxOutputTokens,
   });
   if (result.data) return result.data;
   // Out of room everywhere is no verdict on the story: like a Gemini outage,
   // it stays waiting for a later run. Only "answered, but unusable" is.
-  if (result.failure !== "invalid") unavailable = "AI unavailable (every free provider is at its limit)";
+  if (result.failure !== "invalid") {
+    limitedThisRun = true;
+    const until = Date.now() + LIMIT_BACKOFF_MS;
+    for (let r = 0; r <= rankOf(options.priority); r++) limitedUntil[r] = Math.max(limitedUntil[r], until);
+  }
   return null;
 }
 
@@ -237,7 +261,8 @@ export async function generateCommentary(
   if (!sourceSnippet || sourceSnippet.trim().length < 20) return EMPTY_RESULT;
 
   const parsed = await callGemini(buildRssPrompt(title, sourceSnippet, sourceName), {
-    priority: "low",
+    purpose: "news-writeup",
+    priority: "high",
     responseSchema: {
       type: "OBJECT",
       properties: {
@@ -297,7 +322,8 @@ Does the text above contain at least one specific, checkable fact (a number, a n
 
 export async function verifyCommentaryHasSubstance(title: string, commentary: string): Promise<boolean> {
   const parsed = await callGemini(buildSubstanceCheckPrompt(title, commentary), {
-    priority: "low",
+    purpose: "news-check",
+    priority: "high",
     responseSchema: {
       type: "OBJECT",
       properties: { hasSubstance: { type: "BOOLEAN" } },
@@ -372,11 +398,21 @@ export interface SocialCaptions {
 }
 
 // language: "es" writes the captions in Spanish (the Spanish Page); default English.
-export async function generateSocialCaptions(title: string, body: string, language?: string, facebookStyle?: "question" | "hook"): Promise<SocialCaptions | null> {
+// AI priorities (2026-11-22): the site's own news write-ups (generateCommentary and its substance check) are "high", like reel and poster copy
+// (which can use the strong Flash slots). Social captions and translations are "normal". News write-ups used to be "low" and captions "high",
+// so on 2026-11-21 nothing was written up or published for 11.5 hours once the free Gemini keys ran out at 20:30 UTC (llm/ledger.ts pacing).
+export async function generateSocialCaptions(title: string, body: string, language?: string, facebookStyle?: "question" | "hook", scope = "main"): Promise<SocialCaptions | null> {
   if (!body || body.trim().length < 40) return null;
+  // One caption per story, language, style and Page (scope = the Page's key): the Page's Facebook link post, its Instagram post and its reel were
+  // each asking the AI for the same pair of captions (one call returns both). Reused for 3 days. Not shared between Pages, so two Pages never
+  // post identical text. Measured 2026-11-22 on 24 h of posts: 18% fewer caption calls (123 of 671).
+  const cacheKey = captionCacheKey(title, body, language, facebookStyle, scope);
+  const cached = await readCachedCaptions(cacheKey);
+  if (cached) return cached;
 
   const parsed = await callGemini(buildSocialCaptionsPrompt(title, body, language, facebookStyle), {
-    priority: "high",
+    purpose: "caption",
+    priority: "normal",
     model: COPY_MODEL,
     temperature: 0.6,
     maxOutputTokens: 2048,
@@ -397,7 +433,46 @@ export async function generateSocialCaptions(title: string, body: string, langua
   // A free model once returned ~100 quote marks then mangled words as the caption, and it was posted (main Page, 2026-11-14 02:07 UTC).
   if (isGarbledCaption(facebook) || isGarbledCaption(instagram)) return null;
 
+  await writeCachedCaptions(cacheKey, { facebook, instagram });
   return { facebook, instagram };
+}
+
+export const CAPTION_CACHE_DAYS = 3;
+// The stored caption's key: the story's title and body, the language and the Facebook style, hashed (pure, unit-tested).
+export function captionCacheKey(title: string, body: string, language?: string, facebookStyle?: string, scope?: string): string {
+  let h1 = 0x811c9dc5, h2 = 0;
+  for (const c of `${title}|${body}|${language ?? "en"}|${facebookStyle ?? ""}|${scope ?? "main"}`) {
+    h1 = Math.imul(h1 ^ c.charCodeAt(0), 16777619) >>> 0;
+    h2 = (h2 * 31 + c.charCodeAt(0)) >>> 0;
+  }
+  return `captions:${h1.toString(36)}${h2.toString(36)}`;
+}
+// The database is loaded here, not at the top of the file, so the pure functions above stay testable without one; a failed read or write
+// only means one more AI call.
+async function readCachedCaptions(key: string): Promise<SocialCaptions | null> {
+  try {
+    const [{ db }, { dataSnapshot }, { eq }] = await Promise.all([import("@/db"), import("@/db/schema"), import("drizzle-orm")]);
+    const [row] = await db.select({ data: dataSnapshot.data, at: dataSnapshot.fetchedAt }).from(dataSnapshot).where(eq(dataSnapshot.key, key)).limit(1);
+    if (!row || Date.now() - row.at.getTime() > CAPTION_CACHE_DAYS * 86_400_000) return null;
+    const d = row.data as Partial<SocialCaptions>;
+    return typeof d.facebook === "string" && typeof d.instagram === "string" ? { facebook: d.facebook, instagram: d.instagram } : null;
+  } catch {
+    return null;
+  }
+}
+async function writeCachedCaptions(key: string, captions: SocialCaptions): Promise<void> {
+  try {
+    const [{ db }, { dataSnapshot }] = await Promise.all([import("@/db"), import("@/db/schema")]);
+    await db.insert(dataSnapshot).values({ key, data: captions, sourceUrl: "ai:social-captions" })
+      .onConflictDoUpdate({ target: dataSnapshot.key, set: { data: captions, fetchedAt: new Date() } });
+    // About one write in 25 also clears the rows past the cache window, so the table does not grow without bound.
+    if (Math.random() < 0.04) {
+      const { and, like, lt } = await import("drizzle-orm");
+      await db.delete(dataSnapshot).where(and(like(dataSnapshot.key, "captions:%"), lt(dataSnapshot.fetchedAt, new Date(Date.now() - CAPTION_CACHE_DAYS * 86_400_000))));
+    }
+  } catch {
+    // best effort
+  }
 }
 
 function buildPosterPrompt(title: string, body: string, styles?: HookStyle[]): string {
@@ -472,6 +547,8 @@ export async function generatePosterContent(title: string, body: string, languag
     ? "\n\nLANGUAGE: Write the eyebrow, hook and every row label and value in neutral Spanish for US Hispanic, Latin American and Spanish readers (no regional slang). Keep names of people, teams and competitions as they are normally written."
     : "";
   const parsed = await callGemini(buildPosterPrompt(title, body, opts?.styles) + languageRule, {
+    purpose: "reel-copy",
+    // High, not normal: this is the call that can use the strong, low-allowance Flash slots (highOnly), which the hook writing benefits from.
     priority: "high",
     model: COPY_MODEL,
     temperature: 0.5,
@@ -541,6 +618,7 @@ export async function generateMatchRecap(
   if (!factsText || factsText.trim().length < 20) return null;
 
   const parsed = await callGemini(buildMatchPrompt(title, factsText, competitionName), {
+    purpose: "match-recap",
     responseSchema: {
       type: "OBJECT",
       properties: { recap: { type: "STRING" } },

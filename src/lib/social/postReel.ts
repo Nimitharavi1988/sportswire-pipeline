@@ -448,7 +448,7 @@ export async function postReel(
   // in a pick-a-side question (reel viewers can't tap the link, so comments are the signal to win),
   // half the usual one. Each story's link is tagged utm_content=question|control.
   const reelVariant = opts.topicPage?.reelCaptionTest ? (captionVariantFor(articleId) === "hook" ? "question" : "control") : undefined;
-  const captions = (await generateSocialCaptions(textTitle, textBody, locale, reelVariant === "question" ? "question" : undefined)) ?? (locale ? { facebook: textTitle, instagram: textTitle } : null);
+  const captions = (await generateSocialCaptions(textTitle, textBody, locale, reelVariant === "question" ? "question" : undefined, opts.topicPage?.key ?? "main")) ?? (locale ? { facebook: textTitle, instagram: textTitle } : null);
 
   // Topic Pages pick music by the story's mood and sport; the main Page and Instagram keep the original rotation.
   const music = opts.music ?? musicStyleFor(article.id, opts.topicPage ? { title: article.title, category: article.category } : undefined);

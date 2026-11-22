@@ -34,6 +34,7 @@ import { fetchTrendingKeywords, computeTrendingScore } from "./trending";
 import { fetchStockImagePools, createStockImagePicker } from "./stockImages";
 import {
   aiUnavailableReason,
+  aiLimitedThisRun,
   generateCommentary as generateCommentaryUntimed,
   generateMatchRecap as generateMatchRecapUntimed,
   verifyCommentaryHasSubstance as verifyCommentaryHasSubstanceUntimed,
@@ -722,7 +723,7 @@ export async function runIngest() {
           // Only touches still-pending items — an already-published
           // article isn't silently pulled by a later failed retry.
           // Not when the AI itself was unavailable — that's no verdict on the story.
-          if (!commentary && existing.status === "pending_review" && !aiUnavailableReason()) {
+          if (!commentary && existing.status === "pending_review" && !aiUnavailableReason("high")) {
             await db.update(article).set({ status: "rejected", rejectionReason: retryReason, updatedAt: new Date() }).where(eq(article.id, existing.id));
             existing.status = "rejected";
           }
@@ -905,7 +906,7 @@ export async function runIngest() {
           body = commentary;
         } else {
           coverage.remove(item.title, item.category);
-          if (!aiUnavailableReason()) {
+          if (!aiUnavailableReason("high")) {
             commentaryAttemptFailed = true;
             rejectionReason = commentaryFailureReason(rawCommentary, grounding.text.length);
           }
@@ -1122,7 +1123,7 @@ export async function runIngest() {
   const photoSummary = photoLookupSummary();
   if (photoSummary) console.log(photoSummary);
   if (thinSourceSkips > 0) console.log(`[ingest] ${thinSourceSkips} stories left unwritten: source text too thin or not about the headline (MIN_GROUNDING_CHARS=${minGroundingChars(process.env.MIN_GROUNDING_CHARS)}).`);
-  if (aiUnavailableReason()) console.warn(`[ingest] ${aiUnavailableReason()} — stories were left pending, not rejected; they will be written once the AI is back.`);
+  if (aiUnavailableReason() || aiLimitedThisRun()) console.warn(`[ingest] ${aiUnavailableReason() ?? aiLimitedThisRun()} — stories were left pending, not rejected; they will be written once the AI is back.`);
   console.log(
     `Ingest run complete: ${ingested} new articles (${flagged} flagged), ${staleSkipped} stale RSS items skipped (older than ${MAX_RSS_ITEM_AGE_MS / 86400000}d), ${crossProviderSkipped} matches already stored from another provider (${crossProviderRefreshed} scored from a superseding one), ${reopenedFromDirect} Google-News-rejected stories reopened from the publisher's own feed, ` +
     `${duplicates} duplicates skipped (${backfilled} of those backfilled with a body they missed on a previous run), ` +

@@ -45,6 +45,18 @@ export function nextReset(now: number, resetHourUtc: number): number {
   return Math.floor(shifted / DAY) * DAY + DAY + resetHourUtc * HOUR;
 }
 
+// Pacing across the quota day (2026-11-22). The free Gemini keys gave about 1,265 requests a day and were used up by 20:30 UTC, 12.5 hours after
+// the 08:00 reset, so nothing could be written up through the US evening. A kind of work may use its share of the day's quota only as fast as
+// the clock releases it, plus a head start (PACE_HEADROOM_HOURS): news, the work that matters, may run furthest ahead, social copy least. The
+// shares in SOFT_CAP still apply on top, so when the quota runs short the low-priority work yields first. Pure, unit-tested.
+export const PACE_HEADROOM_HOURS: Record<Priority, number> = { high: 8, normal: 4, low: 2 };
+export function hoursSinceReset(now: number, resetHourUtc: number): number {
+  return (now - (nextReset(now, resetHourUtc) - DAY)) / HOUR;
+}
+export function pacedShare(priority: Priority, hoursSince: number): number {
+  return Math.min(1, (hoursSince + PACE_HEADROOM_HOURS[priority]) / 24);
+}
+
 // The slot's usage for today, starting a fresh day when the quota day turns.
 export function usageFor(ledger: Ledger, key: string, now: number, resetHourUtc: number): Usage {
   const day = dayKey(now, resetHourUtc);
@@ -58,10 +70,10 @@ export function usageFor(ledger: Ledger, key: string, now: number, resetHourUtc:
 export type BudgetCheck = { ok: true } | { ok: false; reason: string };
 
 // Whether one more request of about `estTokens` fits (pure, unit-tested).
-export function checkBudget(u: Usage, limits: Limits, priority: Priority, estTokens: number, now: number): BudgetCheck {
+export function checkBudget(u: Usage, limits: Limits, priority: Priority, estTokens: number, now: number, pace?: { resetHourUtc: number }): BudgetCheck {
   if (now < u.blockedUntil) return { ok: false, reason: `blocked for another ${Math.ceil((u.blockedUntil - now) / 60_000)} min` };
   if (limits.tpm && estTokens > limits.tpm) return { ok: false, reason: `request (${estTokens} tokens) is over the ${limits.tpm}/min limit` };
-  const share = SOFT_CAP[priority];
+  const share = SOFT_CAP[priority] * (pace ? pacedShare(priority, hoursSinceReset(now, pace.resetHourUtc)) : 1);
   if (limits.rpd && u.requests + 1 > Math.floor(limits.rpd * share)) return { ok: false, reason: `daily requests used (${u.requests}/${limits.rpd})` };
   if (limits.tpd && u.tokens + estTokens > limits.tpd * share) return { ok: false, reason: `daily tokens used (${u.tokens}/${limits.tpd})` };
   return { ok: true };

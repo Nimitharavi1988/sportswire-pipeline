@@ -59,6 +59,7 @@ export function parseReview(parsed: unknown): Review {
 
 export async function reviewTranslation(locale: LocaleConfig, src: Fields, out: Fields): Promise<Review> {
   const parsed = await callGemini(buildReviewPrompt(locale, src, out), {
+    purpose: "translation-review",
     model: REVIEW_MODEL,
     temperature: 0,
     maxOutputTokens: 1024,

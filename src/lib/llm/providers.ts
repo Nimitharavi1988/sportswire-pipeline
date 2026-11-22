@@ -46,6 +46,9 @@ export interface Slot {
   // Gemini Flash spends output tokens on hidden reasoning unless told not
   // to; Flash-Lite rejects that setting (see ingestion/commentary.ts).
   thinkingOff?: boolean;
+  // A daily quota spread across the day (ledger.ts pacedShare) rather than first come, first served: the Gemini slots, free and paid (so early work
+  // cannot spend the evening's paid allowance either). LLM_PACING=off ends it.
+  paced?: boolean;
   // Only for high-priority work (and first in line for it): the strong models
   // with the smallest daily allowances.
   highOnly?: boolean;
@@ -83,9 +86,12 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
   const slots: Slot[] = [];
   const gemini = (key: string, id: string, model: string, tiers: Tier[], limits: Limits, paid: boolean, thinkingOff: boolean, extra: Partial<Slot> = {}): Slot => ({
     id, provider: "gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta", apiKey: key, model, tiers, limits,
-    budgetKey: `${paid ? "gemini-paid" : "gemini-free"}/${model}`, resetHourUtc: GEMINI_RESET_HOUR_UTC, paid, thinkingOff, ...extra,
+    budgetKey: `${paid ? "gemini-paid" : "gemini-free"}/${model}`, resetHourUtc: GEMINI_RESET_HOUR_UTC, paid, thinkingOff,
+    paced: env.LLM_PACING?.trim().toLowerCase() !== "off", ...extra,
   });
 
+  // 2026-11-22: measured, not published: with two free projects the four Flash-Lite keys were blocked after 283, 290, 325 and 367 requests (1,265 a
+  // day, about 630 a project), so 320 a key is the limit the soft caps and pacing work from, not the 500 below.
   // The free Gemini project's limits, read from AI Studio's Rate limits page on
   // 2026-10-04. Each MODEL has its own allowance (as with Groq's), which is
   // what lets one project carry the site's bulk work:
@@ -106,7 +112,7 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
   const freeKey = env.GEMINI_FREE_API_KEY;
   if (freeKey) {
     const lite = (id: string, model: string): Slot => gemini(freeKey, id, model, ["lite", "standard"],
-      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 500), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false);
+      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 320), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false);
     slots.push(lite("gemini-free lite", GEMINI_LITE));
     slots.push(lite("gemini-free lite31", "gemini-3.1-flash-lite"));
   }
@@ -116,7 +122,7 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
   const freeKey2 = env.GEMINI_FREE_API_KEY_2;
   if (freeKey2) {
     const lite2 = (id: string, model: string): Slot => gemini(freeKey2, id, model, ["lite", "standard"],
-      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 500), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false,
+      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 320), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false,
       { budgetKey: `gemini-free2/${model}` });
     slots.push(lite2("gemini-free2 lite", GEMINI_LITE));
     slots.push(lite2("gemini-free2 lite31", "gemini-3.1-flash-lite"));

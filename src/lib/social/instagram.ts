@@ -86,7 +86,7 @@ export async function postArticleToInstagram(articleId: string, topicPage?: Face
   if (topicPage?.locale && !tr) return false; // not translated (yet): nothing to post
   const postTitle = tr?.title ?? article.title;
   const postBody = tr ? tr.body : article.body;
-  const captions = postBody ? await generateSocialCaptions(postTitle, postBody, topicPage?.locale) : null;
+  const captions = postBody ? await generateSocialCaptions(postTitle, postBody, topicPage?.locale, undefined, topicPage?.key ?? "main") : null;
   const captionBody = captions?.instagram ?? postTitle;
   const pickHashtags = topicPage?.locale && topicPage.hashtags ? topicPage.hashtags : topicPage ? selectTopicInstagramHashtags : selectInstagramHashtags;
   const hashtags = pickHashtags(article.title, article.category).join(" ");

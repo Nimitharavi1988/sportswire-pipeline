@@ -33,6 +33,8 @@ export interface RouteRequest {
   schema: GeminiSchema;
   tier: Tier;
   priority?: Priority;
+  // What the call is for ("news-writeup", "caption"...), counted per process and printed when it ends (noteAiCall).
+  purpose?: string;
   temperature?: number;
   maxOutputTokens?: number;
 }
@@ -174,7 +176,7 @@ export class LlmRouter {
     // Web research has its own block record: a refused search must not block
     // the same model's ordinary answers.
     const block = usageFor(ledger, `block:${slot.id}${blockKind}`, now, slot.resetHourUtc);
-    const check = checkBudget(budget, slot.limits, priority, est, now);
+    const check = checkBudget(budget, slot.limits, priority, est, now, slot.paced ? { resetHourUtc: slot.resetHourUtc } : undefined);
     if (!check.ok) return { reason: check.reason };
     const blocked = checkBudget(block, {}, priority, est, now);
     if (!blocked.ok) return { reason: blocked.reason };
@@ -241,6 +243,7 @@ export class LlmRouter {
           stat.ok++;
           await this.persist();
           if (attempts.length > 0) this.log(`LLM: answered by ${slot.id} after: ${attempts.join("; ")}`);
+          noteAiCall(req.purpose, slot.paid);
           return { data, via: slot.id, attempts };
         }
         sawInvalid = true;
@@ -383,9 +386,27 @@ const LONG_BLOCK_MIN = 45;
 // every run, so the paid backup was held back for hours and nothing was written up or published.
 export function paidAllowed(attempts: string[]): boolean {
   if (attempts.every(attemptIsExhausted)) return true;
-  const geminiFree = attempts.filter((a) => a.startsWith("gemini-free"));
-  return geminiFree.length > 0 && geminiFree.every(attemptIsExhausted);
+  // The free Gemini slots that carry the work (Flash-Lite, and the strong Flash ones). The small Gemma slots on the same key are left out: they
+  // answer "invalid answer" or are blocked for a few minutes, and say nothing about whether the key has room (2026-11-22 03:40 UTC: that kept
+  // the paid slot held back in a run with every Flash-Lite key blocked for 263 more minutes).
+  const keys = attempts.filter((a) => /^gemini-free2? (lite|flash)/.test(a));
+  return keys.length > 0 && keys.every(attemptIsExhausted);
 }
+
+// Calls answered by this process, by purpose, printed once when it ends: until 2026-11-22 the ledger counted calls per provider only, so what the
+// free quota went to had to be estimated from outputs. Pure counting, no effect on routing.
+const callsByPurpose = new Map<string, number>();
+let paidAnswers = 0;
+let exitHooked = false;
+export function noteAiCall(purpose: string | undefined, paid: boolean): void {
+  callsByPurpose.set(purpose ?? "other", (callsByPurpose.get(purpose ?? "other") ?? 0) + 1);
+  if (paid) paidAnswers++;
+  if (!exitHooked && typeof process !== "undefined" && typeof process.once === "function") {
+    exitHooked = true;
+    process.once("exit", () => console.log(`[ai] answered this process: ${[...callsByPurpose].map(([k, v]) => `${k} ${v}`).join(", ")}${paidAnswers ? ` (paid ${paidAnswers})` : ""}`));
+  }
+}
+export function aiCallCounts(): Record<string, number> { return Object.fromEntries(callsByPurpose); }
 
 export function attemptIsExhausted(attempt: string): boolean {
   if (/daily requests used|daily tokens used|rate-limited \(daily\)|\/min limit/.test(attempt)) return true;
