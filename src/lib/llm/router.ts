@@ -216,10 +216,10 @@ export class LlmRouter {
     if (chain.length === 0) return { data: null, failure: "none", attempts };
 
     for (const slot of chain) {
-      // Paid last, and only once every free slot is used up for the day (or out
+      // Paid last, and only once the free capacity is used up for the day (or out
       // for a long while): a free slot that was merely busy for a moment is a
-      // reason to wait for the next run, not to spend.
-      if (slot.paid && !attempts.every(attemptIsExhausted)) {
+      // reason to wait for the next run, not to spend (paidAllowed).
+      if (slot.paid && !paidAllowed(attempts)) {
         attempts.push(`${slot.id}: held back (free providers are busy, not used up)`);
         noRoom++;
         continue;
@@ -378,6 +378,15 @@ export class LlmRouter {
 // The paid slot is only used when every free slot ahead of it is used up
 // (pure, unit-tested).
 const LONG_BLOCK_MIN = 45;
+// Whether the paid slot may be asked (pure, unit-tested): every free slot used up, or the free Gemini keys (most of the free capacity) used up
+// even if the small free models are only "busy". 2026-11-22: with the Gemini free keys blocked for 5+ hours, Mistral answered "busy for 59s" on
+// every run, so the paid backup was held back for hours and nothing was written up or published.
+export function paidAllowed(attempts: string[]): boolean {
+  if (attempts.every(attemptIsExhausted)) return true;
+  const geminiFree = attempts.filter((a) => a.startsWith("gemini-free"));
+  return geminiFree.length > 0 && geminiFree.every(attemptIsExhausted);
+}
+
 export function attemptIsExhausted(attempt: string): boolean {
   if (/daily requests used|daily tokens used|rate-limited \(daily\)|\/min limit/.test(attempt)) return true;
   const blocked = /blocked for another (\d+) min/.exec(attempt);

@@ -484,3 +484,171 @@ export const fanVisit = pgTable("FanVisit", {
   primaryKey({ columns: [t.voterId, t.day] }),
   index("FanVisit_day_idx").on(t.day),
 ]);
+
+// Local sports (see lib/local): a club or league that registered to publish
+// local results. Phase 1: registration + admin approval. contactEmail and
+// contactName are private (admin only), never shown publicly.
+export const localOrg = pgTable("LocalOrg", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  name: text("name").notNull(),
+  sport: text("sport").notNull(), // id from lib/local/sports.ts
+  city: text("city").notNull(),
+  region: text("region"),
+  country: text("country").notNull(),
+  ground: text("ground"),
+  contactName: text("contactName").notNull(),
+  contactEmail: text("contactEmail").notNull(),
+  website: text("website"),
+  about: text("about"),
+  voterId: text("voterId").notNull(),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | suspended
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  reviewedAt: timestamp("reviewedAt", { precision: 3 }),
+}, (t) => [
+  index("LocalOrg_status_createdAt_idx").on(t.status, t.createdAt),
+  index("LocalOrg_voterId_createdAt_idx").on(t.voterId, t.createdAt),
+]);
+
+// Local sports phase 2. A club signs in with an emailed private link: only the
+// sha256 of the token is stored. Links expire and can be revoked.
+export const localOrgLink = pgTable("LocalOrgLink", {
+  id: text("id").primaryKey(),
+  orgId: text("orgId").notNull(),
+  tokenHash: text("tokenHash").notNull().unique(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  expiresAt: timestamp("expiresAt", { precision: 3 }).notNull(),
+  revokedAt: timestamp("revokedAt", { precision: 3 }),
+}, (t) => [
+  index("LocalOrgLink_orgId_idx").on(t.orgId),
+]);
+
+// A result submitted by an approved club. Sport-specific detail lives in
+// `score` (shape per lib/local/scoring.ts); `scoreLine` is the one-line summary
+// every list page and card uses. status: published | hidden (admin can hide).
+export const localMatch = pgTable("LocalMatch", {
+  id: text("id").primaryKey(),
+  slug: text("slug").notNull().unique(),
+  orgId: text("orgId").notNull(),
+  sport: text("sport").notNull(),
+  playedOn: text("playedOn").notNull(), // YYYY-MM-DD
+  competition: text("competition"),
+  venue: text("venue"),
+  homeName: text("homeName").notNull(),
+  awayName: text("awayName").notNull(),
+  score: jsonb("score").notNull(),
+  scoreLine: text("scoreLine").notNull(),
+  winner: text("winner").notNull(), // home | away | draw | none
+  report: text("report"),
+  status: text("status").notNull().default("published"),
+  // Phase 3: "live" while the club is updating the score, "final" once finished
+  // (existing rows are final). statusText is the club's short note, e.g. "2nd innings".
+  state: text("state").notNull().default("final"),
+  statusText: text("statusText"),
+  // Under-18 match: photos are not accepted (phase 5); no write-up, no social draft,
+  // initials only on public scorecards (phase 7).
+  junior: boolean("junior").notNull().default(false),
+  // Phase 7: report built from the recorded data (lib/local/report.ts), and when a
+  // social draft was marked posted by an admin.
+  summary: text("summary"),
+  socialPostedAt: timestamp("socialPostedAt", { precision: 3 }),
+  updatedAt: timestamp("updatedAt", { precision: 3 }).notNull().defaultNow(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+}, (t) => [
+  index("LocalMatch_state_updatedAt_idx").on(t.state, t.updatedAt),
+  index("LocalMatch_status_playedOn_idx").on(t.status, t.playedOn),
+  index("LocalMatch_orgId_playedOn_idx").on(t.orgId, t.playedOn),
+]);
+
+// Local sports phase 4: short text updates a club posts while its match is live.
+// `clock` is the club's own label for when it happened ("12.3", "Q3 5:00", "67'").
+export const localCommentary = pgTable("LocalCommentary", {
+  id: text("id").primaryKey(),
+  matchId: text("matchId").notNull(),
+  clock: text("clock"),
+  body: text("body").notNull(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+}, (t) => [
+  index("LocalCommentary_matchId_createdAt_idx").on(t.matchId, t.createdAt),
+]);
+
+// Local sports phase 5: photos a club uploads for its own match. A photo is
+// private (pending) until an admin approves it; takedowns delete the file.
+// sha256 is the fingerprint used to refuse a re-upload of a removed photo.
+export const localPhoto = pgTable("LocalPhoto", {
+  id: text("id").primaryKey(),
+  matchId: text("matchId").notNull(),
+  orgId: text("orgId").notNull(),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | removed
+  removalReason: text("removalReason"), // infringement | other (when removed)
+  width: integer("width").notNull(),
+  height: integer("height").notNull(),
+  bytes: integer("bytes").notNull(),
+  sha256: text("sha256").notNull(),
+  termsVersion: text("termsVersion").notNull(),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+  reviewedAt: timestamp("reviewedAt", { precision: 3 }),
+}, (t) => [
+  index("LocalPhoto_matchId_status_idx").on(t.matchId, t.status),
+  index("LocalPhoto_status_createdAt_idx").on(t.status, t.createdAt),
+  index("LocalPhoto_orgId_createdAt_idx").on(t.orgId, t.createdAt),
+  index("LocalPhoto_sha256_idx").on(t.sha256),
+]);
+
+// "Report photo" from any visitor. reporterEmail is optional and admin-only.
+export const localPhotoReport = pgTable("LocalPhotoReport", {
+  id: text("id").primaryKey(),
+  photoId: text("photoId").notNull(),
+  voterId: text("voterId").notNull(),
+  reason: text("reason").notNull(),
+  reporterEmail: text("reporterEmail"),
+  handled: boolean("handled").notNull().default(false),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+}, (t) => [
+  index("LocalPhotoReport_handled_createdAt_idx").on(t.handled, t.createdAt),
+  index("LocalPhotoReport_photoId_idx").on(t.photoId),
+]);
+
+// Local sports phase 6: cricket ball-by-ball. One row per delivery; the score,
+// scorecard and match summary are always worked out from these rows (see
+// lib/local/cricket.ts), so undo is just deleting the last row. Each ball stores
+// its own context (striker, non-striker, bowler) so nothing depends on replaying
+// rotation rules.
+export const localCricketMatch = pgTable("LocalCricketMatch", {
+  matchId: text("matchId").primaryKey(),
+  overs: integer("overs").notNull(),
+  players: integer("players").notNull(), // per side: an innings ends at players - 1 wickets
+  battingFirst: text("battingFirst").notNull(), // home | away
+  closedInnings: integer("closedInnings").notNull().default(0), // innings ended early by the scorer
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+});
+
+export const localMatchPlayer = pgTable("LocalMatchPlayer", {
+  id: text("id").primaryKey(),
+  matchId: text("matchId").notNull(),
+  side: text("side").notNull(), // home | away
+  name: text("name").notNull(),
+  position: integer("position").notNull(),
+}, (t) => [
+  index("LocalMatchPlayer_matchId_side_idx").on(t.matchId, t.side, t.position),
+]);
+
+export const localBall = pgTable("LocalBall", {
+  id: text("id").primaryKey(),
+  matchId: text("matchId").notNull(),
+  seq: integer("seq").notNull(), // 1, 2, 3 ... across the whole match
+  innings: integer("innings").notNull(),
+  kind: text("kind").notNull(), // run | wide | noball | bye | legbye
+  runs: integer("runs").notNull(),
+  offBat: boolean("offBat").notNull().default(true), // no-ball only: runs came off the bat (else byes)
+  striker: text("striker").notNull(),
+  nonStriker: text("nonStriker").notNull(),
+  bowler: text("bowler").notNull(),
+  wicketHow: text("wicketHow"),
+  wicketOut: text("wicketOut"),
+  wicketFielder: text("wicketFielder"),
+  createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
+}, (t) => [
+  // Two taps landing together cannot both take the same number.
+  uniqueIndex("LocalBall_matchId_seq_key").on(t.matchId, t.seq),
+]);
