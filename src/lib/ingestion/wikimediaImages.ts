@@ -632,6 +632,12 @@ async function fetchPersonPhotoUncached(personName: string, sportHint?: string, 
       if (isEventPhoto(key) || (storyFormat && leadFormat && leadFormat !== storyFormat) || (photoUsage.get(key) ?? 0) >= PHOTO_REUSE_LIMIT) lead = null;
       else notePhotoUse(lead.url);
     }
+    // Player profiles, the homepage player strip and OG images (no seed) showed the same lead photo, PMO visit included (user, 2026-11-22):
+    // an event lead photo is swapped for the person's best other photo, at the small width those places use, or none at all.
+    if (lead && !seed && isEventPhoto(commonsFileKey(lead.url) ?? "")) {
+      const other = choosePhoto(await fetchPersonPhotoCandidates(title, personName), personName, new Map());
+      lead = other ? { url: other.url.replace(/\/\d+px-([^/?]+)(\?.*)?$/, "/330px-$1"), credit: other.credit, creditUrl: other.creditUrl } : null;
+    }
     if (lead) photoStats.canonical++;
     else photoStats[Date.now() < wikiBackoffUntil ? "rateLimited" : candidateCount > 0 ? "filtered" : "noFreePhoto"]++;
     return lead;
@@ -685,7 +691,8 @@ const PHOTO_MEMO_TTL_S = 3600;
 const photoMemo = new Map<string, { value: StockImage | null; expires: number }>();
 
 export async function fetchPersonPhoto(personName: string, sportHint?: string, seed?: string): Promise<StockImage | null> {
-  const key = `${personName}|${sportHint ?? ""}|${seed ?? ""}`;
+  // v2 (2026-11-22): results cached before the event-photo rule are not reused.
+  const key = `v2|${personName}|${sportHint ?? ""}|${seed ?? ""}`;
   const memo = photoMemo.get(key);
   if (memo && memo.expires > Date.now()) return memo.value;
   const remembered = fileCache?.get(key);
