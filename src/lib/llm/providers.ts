@@ -92,6 +92,9 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
 
   // 2026-11-22: measured, not published: with two free projects the four Flash-Lite keys were blocked after 283, 290, 325 and 367 requests (1,265 a
   // day, about 630 a project), so 320 a key is the limit the soft caps and pacing work from, not the 500 below.
+  // 2026-11-22/23: the binding limit looks like TOKENS, not requests: the two projects were cut off at 549,593 and 548,053 tokens on 11-21 (615 and
+  // 650 requests) and at 477,663 and 516,486 on 11-22 (475 and 568 requests). So each key also has a daily token limit of 230,000 (460,000 a
+  // project, just under the lowest measured), which the soft caps and pacing apply to as they do to requests. GEMINI_FREE_LITE_TPD overrides it.
   // The free Gemini project's limits, read from AI Studio's Rate limits page on
   // 2026-10-04. Each MODEL has its own allowance (as with Groq's), which is
   // what lets one project carry the site's bulk work:
@@ -112,7 +115,7 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
   const freeKey = env.GEMINI_FREE_API_KEY;
   if (freeKey) {
     const lite = (id: string, model: string): Slot => gemini(freeKey, id, model, ["lite", "standard"],
-      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 320), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false);
+      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 320), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000), tpd: num(env.GEMINI_FREE_LITE_TPD, 230000) }, false, false);
     slots.push(lite("gemini-free lite", GEMINI_LITE));
     slots.push(lite("gemini-free lite31", "gemini-3.1-flash-lite"));
   }
@@ -122,7 +125,7 @@ function buildAllSlots(env: Record<string, string | undefined>, openRouterModels
   const freeKey2 = env.GEMINI_FREE_API_KEY_2;
   if (freeKey2) {
     const lite2 = (id: string, model: string): Slot => gemini(freeKey2, id, model, ["lite", "standard"],
-      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 320), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000) }, false, false,
+      { rpm: num(env.GEMINI_FREE_LITE_RPM, 14), rpd: num(env.GEMINI_FREE_LITE_RPD, 320), tpm: num(env.GEMINI_FREE_LITE_TPM, 240000), tpd: num(env.GEMINI_FREE_LITE_TPD, 230000) }, false, false,
       { budgetKey: `gemini-free2/${model}` });
     slots.push(lite2("gemini-free2 lite", GEMINI_LITE));
     slots.push(lite2("gemini-free2 lite31", "gemini-3.1-flash-lite"));

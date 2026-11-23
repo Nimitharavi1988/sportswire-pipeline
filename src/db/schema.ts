@@ -505,6 +505,9 @@ export const localOrg = pgTable("LocalOrg", {
   status: text("status").notNull().default("pending"), // pending | approved | rejected | suspended
   createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
   reviewedAt: timestamp("reviewedAt", { precision: 3 }),
+  // The Club terms version the club accepted, and when (lib/local/clubTerms.ts).
+  termsVersion: text("termsVersion"),
+  termsAcceptedAt: timestamp("termsAcceptedAt", { precision: 3 }),
 }, (t) => [
   index("LocalOrg_status_createdAt_idx").on(t.status, t.createdAt),
   index("LocalOrg_voterId_createdAt_idx").on(t.voterId, t.createdAt),
@@ -552,6 +555,8 @@ export const localMatch = pgTable("LocalMatch", {
   // social draft was marked posted by an admin.
   summary: text("summary"),
   socialPostedAt: timestamp("socialPostedAt", { precision: 3 }),
+  // Fixtures: state "scheduled" until the club starts the match; startTime is the club's own "HH:MM".
+  startTime: text("startTime"),
   updatedAt: timestamp("updatedAt", { precision: 3 }).notNull().defaultNow(),
   createdAt: timestamp("createdAt", { precision: 3 }).notNull().defaultNow(),
 }, (t) => [
