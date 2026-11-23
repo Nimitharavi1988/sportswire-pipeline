@@ -1,7 +1,7 @@
 import { isPromoBannerImage } from "./promoImages";
 import { db } from "@/db";
 import { article, vertical } from "@/db/schema";
-import { and, count, eq, gte, ilike, inArray, isNotNull, ne, notInArray } from "drizzle-orm";
+import { and, count, eq, gte, ilike, inArray, isNotNull, ne, notInArray, or } from "drizzle-orm";
 import { commentaryRunBudget, dailyCommentaryCapFrom, scaledReserve, floorSlots, SPORT_DAILY_WRITEUP_FLOOR } from "./commentaryBudget";
 import { runPool } from "./pool";
 import { bestSource, minGroundingChars } from "./groundingRules";
@@ -31,7 +31,7 @@ import { detectEventSeries, detectEventSeriesNear, detectIplTeamMention } from "
 import { computeDedupeHash, computeStableDedupeHash } from "./dedupe";
 import { runQualityChecks } from "./qualityCheck";
 import { fetchTrendingKeywords, computeTrendingScore } from "./trending";
-import { fetchStockImagePools, createStockImagePicker } from "./stockImages";
+import { fetchStockImagePools, createStockImagePicker, stockPhotoKey } from "./stockImages";
 import {
   aiUnavailableReason,
   aiLimitedThisRun,
@@ -295,9 +295,15 @@ async function loadRecentPhotoUsage(): Promise<Map<string, number>> {
     const rows = await db
       .select({ url: article.heroImageUrl })
       .from(article)
-      .where(and(gte(article.createdAt, new Date(Date.now() - 7 * 24 * 3600 * 1000)), ilike(article.heroImageUrl, "%wikimedia.org%")));
+      .where(
+        and(
+          gte(article.createdAt, new Date(Date.now() - 7 * 24 * 3600 * 1000)),
+          or(ilike(article.heroImageUrl, "%wikimedia.org%"), ilike(article.heroImageUrl, "%pexels.com%"))
+        )
+      );
     for (const r of rows) {
-      const key = r.url ? commonsFileKey(r.url) : null;
+      // Pexels photos are counted too, for the stock picker's cap (stockImages.ts STOCK_REUSE_LIMIT).
+      const key = !r.url ? null : /pexels\.com/i.test(r.url) ? stockPhotoKey(r.url) : commonsFileKey(r.url);
       if (key) usage.set(key, (usage.get(key) ?? 0) + 1);
     }
   } catch (err) {
@@ -307,7 +313,8 @@ async function loadRecentPhotoUsage(): Promise<Map<string, number>> {
 }
 
 export async function runIngest() {
-  setPhotoUsage(await loadRecentPhotoUsage());
+  const recentPhotoUsage = await loadRecentPhotoUsage();
+  setPhotoUsage(recentPhotoUsage);
   await loadPhotoCache();
   let [verticalRow] = await db.select().from(vertical).where(eq(vertical.name, "sports")).limit(1);
   if (!verticalRow) {
@@ -390,7 +397,7 @@ export async function runIngest() {
     // own and always noindex (thinContent.ts), so not worth a write-up or a
     // place on the site (2026-10-04; ~600 a day).
     .filter((item) => isMatchDataSource(item.sourceName) || !isNotAStory(item.title));
-  const stockImagePicker = createStockImagePicker(stockImagePools);
+  const stockImagePicker = createStockImagePicker(stockImagePools, recentPhotoUsage);
 
   // Cloudflare Workers caps outbound subrequests per invocation, and every
   // Prisma call here goes over HTTPS via Accelerate — so a per-item

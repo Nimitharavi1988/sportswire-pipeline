@@ -340,6 +340,10 @@ export interface PhotoCandidate {
   group?: boolean;
   // Taken during play (batting, dribbling, racing...) rather than a portrait or an object (photoKind below).
   kind?: "action" | "portrait" | "other";
+  // A ceremony or political photo (isEventPhoto): never used, not even as the lead image.
+  event?: boolean;
+  // The cricket format the photo shows, when its name or description says (cricketFormatOf).
+  format?: CricketFormat | null;
 }
 
 // File names/titles of group photos: "Burrow_and_Bernard.jpg",
@@ -357,6 +361,34 @@ export function photoKind(fileNameAndDescription: string): "action" | "portrait"
   if (PORTRAIT_PHOTO_PATTERN.test(text)) return "portrait";
   return "other";
 }
+// Ceremony and political photos (2026-11-22, user report): Wikipedia's lead photo for many India players is from the 2024 T20 World
+// Cup team's visit to the Prime Minister ("Virat_Kohli_in_PMO_New_Delhi", "Narendra_Modi,_Jasprit_Bumrah", "..._meets_PM_Modi"),
+// and each was on up to 95 stories in three weeks. These are not cricket photos, so they are refused even as the lead image. A
+// match photo taken at Narendra Modi Stadium is still fine. Pure.
+const EVENT_PHOTO_PATTERN = /\b(pmo|prime minister|pm|minister|ministry|president|rashtrapati|governor|parliament|meets?|meeting|felicitat\w*|honou?r(ed|ing)?|awards?|ceremony|inaugurat\w*|launch\w*|graces?|summit|conclave|rally|campaign|wedding|reception|gala|premiere|red carpet)\b/i;
+export function isEventPhoto(fileNameAndDescription: string): boolean {
+  const text = splitWords(fileNameAndDescription).replace(/narendra modi (cricket )?stadium/gi, "stadium");
+  return /\bmodi\b/i.test(text) || EVENT_PHOTO_PATTERN.test(text);
+}
+
+// File names run words together ("RohitSharma_MumbaiIndians", "PM_Modi"): underscores, hyphens and camel case become spaces. Pure.
+function splitWords(text: string): string {
+  return text.replace(/[_-]+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2");
+}
+
+// Cricket match format (2026-11-22, user report: Test stories showed one-day and IPL photos). Whites are worn only in Tests and
+// first-class cricket; ODI, T20 and franchise cricket use coloured kit, so a photo of the other kind shows the wrong game. Pure.
+export type CricketFormat = "test" | "white-ball";
+const TEST_PATTERN = /\b(tests?|test match|first class|day [1-5]|ashes|border gavaskar|wtc|world test championship|ranji|county championship|sheffield shield|whites)\b/i;
+const WHITE_BALL_PATTERN = /\b(odis?|one day|t20i?s?|twenty20|ipl|indian premier league|big bash|bbl|psl|cpl|sa20|ilt20|the hundred|t20 blast|champions trophy|asia cup|mumbai indians|chennai super kings|royal challengers|kolkata knight riders|sunrisers|rajasthan royals|delhi capitals|punjab kings|kings xi|lucknow super giants|gujarat titans|deccan chargers|rising pune|world cup)\b/i;
+export function cricketFormatOf(text: string): CricketFormat | null {
+  const t = splitWords(text);
+  const test = TEST_PATTERN.test(t);
+  const white = WHITE_BALL_PATTERN.test(t);
+  if (test === white) return null; // neither, or both ("Test and ODI squads"): unknown
+  return test ? "test" : "white-ball";
+}
+
 export function looksLikeGroupPhoto(fileNameAndTitle: string): boolean {
   return GROUP_PHOTO_PATTERN.test(fileNameAndTitle.replace(/_+/g, " "));
 }
@@ -434,19 +466,24 @@ function notePhotoUse(url: string): void {
 // The best candidates for a story, then a seeded pick among the top few for
 // variety; anything already used PHOTO_REUSE_LIMIT times is skipped (if every
 // candidate is, the least used one is taken rather than none). Pure.
-export function choosePhoto(all: PhotoCandidate[], seed: string, usage: Map<string, number>): PhotoCandidate | null {
+export function choosePhoto(all: PhotoCandidate[], seed: string, usage: Map<string, number>, storyFormat: CricketFormat | null = null): PhotoCandidate | null {
   // A match, mural or group photo is not a picture of the person (Cole Palmer story got a Man City match shot, 2026-11-07): only the
   // Wikipedia lead image may be one. No candidate left means no photo, and the story keeps its card.
   const nowYear = new Date().getUTCFullYear();
   // A photo of 7+ years ago shows an old team and kit (Trent Alexander-Arnold in 2016 for a Real Madrid story): lead image only.
-  const candidates = all.filter((c) => c.isLead || (!c.group && (c.year === null || nowYear - c.year <= 6)));
+  // Event photos and photos of the other cricket format are dropped for everyone, the lead image included (2026-11-22).
+  const candidates = all.filter(
+    (c) => !c.event && !(storyFormat && c.format && c.format !== storyFormat) && (c.isLead || (!c.group && (c.year === null || nowYear - c.year <= 6)))
+  );
   if (candidates.length === 0) return null;
   const uses = (c: PhotoCandidate) => usage.get(c.fileName.replace(/ /g, "_").toLowerCase()) ?? 0;
   const fresh = candidates.filter((c) => uses(c) < PHOTO_REUSE_LIMIT);
   const pool = fresh.length ? fresh : [...candidates].sort((a, b) => uses(a) - uses(b)).slice(0, 1);
-  const ranked = [...pool].sort((a, b) => scorePhoto(b) - scorePhoto(a));
-  const best = scorePhoto(ranked[0]);
-  const top = ranked.filter((c) => scorePhoto(c) >= best - 1).slice(0, 3);
+  // A photo that shows the story's own format ranks above one that doesn't say.
+  const score = (c: PhotoCandidate) => scorePhoto(c) + (storyFormat && c.format === storyFormat ? 2 : 0);
+  const ranked = [...pool].sort((a, b) => score(b) - score(a));
+  const best = score(ranked[0]);
+  const top = ranked.filter((c) => score(c) >= best - 1).slice(0, 3);
   return top[simpleHash(seed) % top.length];
 }
 
@@ -494,6 +531,8 @@ async function fetchPersonPhotoCandidates(title: string, personName: string): Pr
       nameInFile: namesPerson(personName, fileName, ""),
       group: looksLikeGroupPhoto(`${fileName} ${stripHtml(meta.ObjectName?.value ?? "")}`),
       kind: photoKind(`${fileName} ${stripHtml(description)}`),
+      event: isEventPhoto(`${fileName} ${stripHtml(description)}`),
+      format: cricketFormatOf(`${fileName} ${stripHtml(description)}`),
     });
   }
   return candidates;
@@ -569,10 +608,12 @@ async function fetchPersonPhotoUncached(personName: string, sportHint?: string, 
     }
 
     let candidateCount = 0;
+    // Story seeds are slugs made from the headline, so they carry "test", "odi", "ipl"... (cricket only).
+    const storyFormat = seed && /cricket/i.test(sportHint ?? "") ? cricketFormatOf(seed) : null;
     if (seed) {
       const candidates = await fetchPersonPhotoCandidates(title, personName);
       candidateCount = candidates.length;
-      const picked = choosePhoto(candidates, seed, photoUsage);
+      const picked = choosePhoto(candidates, seed, photoUsage, storyFormat);
       if (picked) {
         notePhotoUse(picked.url);
         photoStats.found++;
@@ -582,7 +623,15 @@ async function fetchPersonPhotoUncached(personName: string, sportHint?: string, 
 
     // 2. No seed, or the seeded pool came back empty — fall back to
     // Wikipedia's own curated lead photo.
-    const lead = await fetchCanonicalPersonPhoto(title);
+    let lead = await fetchCanonicalPersonPhoto(title);
+    // For a story, the lead photo follows the same rules as every other candidate (2026-11-22): no event photo, no photo of the
+    // other format, and the reuse cap. Before this the fallback skipped all three, which is how one PMO photo reached 95 stories.
+    if (lead && seed) {
+      const key = commonsFileKey(lead.url) ?? "";
+      const leadFormat = cricketFormatOf(key);
+      if (isEventPhoto(key) || (storyFormat && leadFormat && leadFormat !== storyFormat) || (photoUsage.get(key) ?? 0) >= PHOTO_REUSE_LIMIT) lead = null;
+      else notePhotoUse(lead.url);
+    }
     if (lead) photoStats.canonical++;
     else photoStats[Date.now() < wikiBackoffUntil ? "rateLimited" : candidateCount > 0 ? "filtered" : "noFreePhoto"]++;
     return lead;

@@ -93,8 +93,15 @@ export async function fetchStockImagePools(): Promise<Record<string, StockImage[
  * Reshuffles and starts a new cycle once a category's pool is exhausted, so
  * every photo in the pool gets used before any repeat within a run.
  */
-export function createStockImagePicker(pools: Record<string, StockImage[]>) {
+// A Pexels photo shows no one from the story, only "some cricket" (found 2026-11-22: ~25 cricket photos were each on 150-185 stories
+// in three weeks, one credited "Photo by Rohit Sharma on Pexels", a Pexels user). Each is used at most STOCK_REUSE_LIMIT times in the
+// usage window (runIngest loadRecentPhotoUsage, 7 days); once a pool is used up the story gets its branded card instead.
+export const STOCK_REUSE_LIMIT = 3;
+export const stockPhotoKey = (url: string): string => url.split("?")[0].toLowerCase();
+
+export function createStockImagePicker(pools: Record<string, StockImage[]>, usage: Map<string, number> = new Map()) {
   const cycles: Record<string, StockImage[]> = {};
+  const used = (img: StockImage) => usage.get(stockPhotoKey(img.url)) ?? 0;
 
   function shuffled(pool: StockImage[]): StockImage[] {
     const copy = [...pool];
@@ -108,13 +115,17 @@ export function createStockImagePicker(pools: Record<string, StockImage[]>) {
   return {
     pick(category: string): StockImage | null {
       const key = Object.keys(pools).find((k) => category.startsWith(k));
-      const pool = key ? pools[key] : null;
+      const pool = key ? pools[key].filter((img) => used(img) < STOCK_REUSE_LIMIT) : null;
       if (!pool || pool.length === 0) return null;
 
       if (!cycles[key!] || cycles[key!].length === 0) {
         cycles[key!] = shuffled(pool);
       }
-      return cycles[key!].pop()!;
+      let img = cycles[key!].pop();
+      while (img && used(img) >= STOCK_REUSE_LIMIT) img = cycles[key!].pop();
+      if (!img) return null;
+      usage.set(stockPhotoKey(img.url), used(img) + 1);
+      return img;
     },
   };
 }
