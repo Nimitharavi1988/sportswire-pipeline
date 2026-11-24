@@ -199,12 +199,27 @@ export class LlmRouter {
     if (outcome.kind === "rate-limit") {
       // A daily limit is shared by every model on the account; a short limit
       // is that model's own (free models are often just busy).
-      recordRateLimit(outcome.daily ? budget : block, now, slot.resetHourUtc, { retryAfterSec: outcome.retryAfterSec, daily: outcome.daily });
+      const target = outcome.daily ? budget : block;
+      recordRateLimit(target, now, slot.resetHourUtc, { retryAfterSec: outcome.retryAfterSec, daily: outcome.daily });
+      this.logFailure(slot, outcome.daily ? "rate limit (daily)" : "rate limit", outcome.detail, target, now, outcome.retryAfterSec);
       return `${slot.id}: rate-limited${outcome.daily ? " (daily)" : ""}`;
     }
     if (outcome.kind === "blocked") recordBlock(block, now, outcome.ms);
     else recordTransientFailure(block, now);
+    this.logFailure(slot, outcome.kind === "blocked" ? "refused" : "temporary error", outcome.detail, block, now);
     return `${slot.id}: ${outcome.detail}`;
+  }
+
+  // The provider's own words for a failed call, once per slot and kind per process (2026-11-23: the free Flash-Lite keys were blocked for about
+  // 11 hours with a third of their quota used, and the log only said "blocked for another N min", so the cause could not be told). Counters
+  // and blocks are unchanged by this.
+  private failureLogged = new Set<string>();
+  private logFailure(slot: Slot, kind: string, detail: string, u: Usage, now: number, retryAfterSec?: number): void {
+    const key = `${slot.id}|${kind}`;
+    if (this.failureLogged.has(key)) return;
+    this.failureLogged.add(key);
+    const blockedMin = Math.max(0, Math.round((u.blockedUntil - now) / 60_000));
+    this.log(`[llm] ${slot.id}: ${kind} — ${detail.replace(/s+/g, " ").slice(0, 300)}${retryAfterSec !== undefined ? `; provider asked to retry after ${retryAfterSec}s` : ""}; blocked ${blockedMin} min (strike ${u.strikes}, ${u.requests} requests, ${u.tokens} tokens today)`);
   }
 
   async json(req: RouteRequest): Promise<RouteResult> {
