@@ -21,11 +21,13 @@ export const EXPLORE_SHARE = 0.2;
 // YouTube hook test (2026-11-14 to about 11-21): on the English Shorts, reaction, model and stakes hooks had median views of 423, 251 and 151
 // against 57 for number and 60 for question (262 Shorts, Oct 30 to Nov 12), but those groups were small (9-18 Shorts). Half the stories, by
 // article id, take the best valid hook in one of these styles when there is one ("favour"); the other half keep the usual pick ("control").
-// The arm is logged (hookTestArm) so the two halves can be compared at the same age. HOOK_TEST=off ends it.
+// The arm is logged (hookTestArm) so the two halves can be compared at the same age. ENDED 2026-11-27: Nov 14-24 gave no benefit (YouTube median 30 views for the
+// favoured arm against 89 for the usual pick, 42 and 32 Shorts; Instagram 127 against 125), so it is off unless HOOK_TEST=on. The workflow does not pass
+// HOOK_TEST through, so the off state is the code's default, not a variable.
 export type HookTestArm = "favour" | "control";
 export const HOOK_TEST_FAVOURED: (HookStyle | "model")[] = ["reaction", "model", "stakes"];
 export function hookTestArm(articleId: string, env: Record<string, string | undefined> = process.env): HookTestArm | null {
-  if (env.HOOK_TEST?.trim().toLowerCase() === "off") return null;
+  if (env.HOOK_TEST?.trim().toLowerCase() !== "on") return null;
   return unit(articleId, "ytHookTest") < 0.5 ? "favour" : "control";
 }
 

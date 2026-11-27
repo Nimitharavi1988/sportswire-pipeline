@@ -115,6 +115,10 @@ export function classifyHttpError(status: number, headers: { get(name: string): 
     };
   }
   if (status === 402) return { kind: "blocked", ms: 6 * HOUR, detail };
+  // Google answers the free keys with 403 "free tier is not available for this project" (2026-11-24: all free slots at 07:45 UTC, the old 12-hour block
+  // then ran to 19:45 UTC and cost the new quota day's morning). It is the free tier being unavailable for now, not a bad key: look again in an hour (one
+  // cheap call), and never hold a key past the next quota reset.
+  if (status === 403 && /free tier (is )?not available/i.test(body)) return { kind: "blocked", ms: HOUR, detail };
   if (status === 401 || status === 403) return { kind: "blocked", ms: 12 * HOUR, detail };
   if (status === 404) return { kind: "blocked", ms: 24 * HOUR, detail };
   return { kind: "transient", detail };
